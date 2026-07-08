@@ -1,0 +1,20 @@
+{
+  "name": "EmprestAI Pro",
+  "short_name": "EmprestAI",
+  "description": "Gestão de empréstimos e clientes",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#080c08",
+  "theme_color": "#080c08",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
