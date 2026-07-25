@@ -167,6 +167,10 @@ body{display:flex;flex-direction:column;}
 .dot:nth-child(3){animation-delay:.4s;}
 @keyframes db{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-5px)}}
 input[type=file]{display:none;}
+#rel-detail{display:none;}
+.rd-tbl{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:4px;}
+.rd-tbl th{text-align:left;padding:4px 6px;border-bottom:1px solid #999;font-weight:700;}
+.rd-tbl td{padding:4px 6px;border-bottom:1px solid #ddd;}
 ::-webkit-scrollbar{width:0;height:0;}
 .dt-wrap{display:none;}
 .dtable{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--border2);border-radius:13px;overflow:hidden;font-size:13px;}
@@ -247,6 +251,8 @@ input[type=file]{display:none;}
   #pg-rel.on{display:block!important;}
   .card,.kpi{border:1px solid #999!important;break-inside:avoid;background:#fff!important;color:#000!important;}
   body{background:#fff!important;color:#000!important;}
+  #rel-detail{display:block!important;}
+  #rel-detail .rd-cli{break-inside:avoid;border:1px solid #999;border-radius:6px;padding:8px 10px;margin-bottom:10px;}
 }
 </style>
 <!-- Firebase SDK -->
@@ -255,8 +261,13 @@ input[type=file]{display:none;}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 </head>
 <body>
+<!-- BOOT SPLASH (evita piscar a tela de login enquanto o Firebase confirma a sessão) -->
+<div id="boot-splash" style="position:fixed;inset:0;background:var(--bg);z-index:1000;display:flex;flex-direction:column;align-items:center;justify-content:center">
+  <div style="font-size:50px;margin-bottom:16px">💸</div>
+  <div style="font-size:24px;font-weight:900;color:var(--g)">EmprestAI Pro</div>
+</div>
 <!-- LOGIN SCREEN -->
-<div id="login-screen" style="position:fixed;inset:0;background:var(--bg);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px">
+<div id="login-screen" style="position:fixed;inset:0;background:var(--bg);z-index:999;display:none;flex-direction:column;align-items:center;justify-content:center;padding:30px">
   <div style="font-size:50px;margin-bottom:16px">💸</div>
   <div style="font-size:24px;font-weight:900;color:var(--g);margin-bottom:6px">EmprestAI Pro</div>
   <div style="font-size:13px;color:var(--t4);margin-bottom:32px">FaciliteCredit</div>
@@ -292,6 +303,7 @@ input[type=file]{display:none;}
     <div class="ib" id="theme-btn" onclick="toggleTheme()" title="Tema">🌙</div>
     <div class="ib" onclick="openModal('m-caixa')">🏦</div>
     <div class="ib" onclick="openModal('m-backup')">💾</div>
+    <div class="ib" onclick="showConfirm('Deseja sair da sua conta?',doLogout,'Sair')" title="Sair da conta">🚪</div>
     <div class="ib" id="addBtn" onclick="openAdd()">＋</div>
   </div>
 </div>
@@ -384,8 +396,9 @@ input[type=file]{display:none;}
     <input type="hidden" id="fid">
     <div class="fg" style="position:relative">
       <label class="fl">Cliente *</label>
-      <input class="fi" id="fcli" placeholder="Nome... (toque pra ver a lista)" autocomplete="off" oninput="acBusca(this.value)" onfocus="acBusca(this.value)" onblur="setTimeout(()=>document.getElementById('acbox').style.display='none',200)">
+      <input class="fi" id="fcli" placeholder="Nome... (toque pra ver a lista)" autocomplete="off" oninput="acBusca(this.value);updateCliScore()" onfocus="acBusca(this.value)" onblur="setTimeout(()=>document.getElementById('acbox').style.display='none',200)">
       <div class="acsuggest" id="acbox"></div>
+      <div id="fcli-score" style="font-size:11px;font-weight:700;margin-top:5px;min-height:14px"></div>
     </div>
     <div class="fr2">
       <div class="fg"><label class="fl">Valor (R$)*</label><input class="fi" id="fval" type="number" placeholder="0" inputmode="decimal" oninput="calcEmp()"></div>
@@ -865,13 +878,7 @@ function renderEmpList(q){
     return (a.dataVenc||'').localeCompare(b.dataVenc||'');
   });
   var tot=list.reduce(function(s,e){return s+totRec(e);},0);
-  var h='<div class="sw"><span>🔍</span><input class="si" id="si-emp" placeholder="Buscar..." oninput="renderEmp()" value="'+q+'"></div>';
-  h+='<div class="ftabs"><button class="ft'+(filtE==='todos'?' on':'')+'" onclick="setFE(\'todos\',this)">Todos</button>';
-  h+='<button class="ft'+(filtE==='hoje'?' on':'')+'" onclick="setFE(\'hoje\',this)">📅 Hoje</button>';
-  h+='<button class="ft'+(filtE==='semana'?' on':'')+'" onclick="setFE(\'semana\',this)">📆 7 Dias</button>';
-  h+='<button class="ft'+(filtE==='atrasado'?' on':'')+'" onclick="setFE(\'atrasado\',this)">🚨 Atrasados</button>';
-  h+='<button class="ft'+(filtE==='pendente'?' on':'')+'" onclick="setFE(\'pendente\',this)">⏳ Pendentes</button>';
-  h+='<button class="ft'+(filtE==='pago'?' on':'')+'" onclick="setFE(\'pago\',this)">✅ Pagos</button></div>';
+  var h='';
   if(list.length){
     h+='<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:9px;padding:9px 12px;margin-bottom:8px;display:flex;justify-content:space-between"><span style="font-size:12px;color:var(--t4);font-weight:600">'+list.length+' emp.</span><span style="font-size:13px;font-weight:900;color:var(--g)">'+R(tot)+'</span></div>';
     h+=list.map(lcard).join('');
@@ -963,7 +970,18 @@ function acBusca(q){
   }).join('');
   box.style.display='block';
 }
-function acSel(nome){document.getElementById('fcli').value=nome;document.getElementById('acbox').style.display='none';calcEmp();}
+function acSel(nome){document.getElementById('fcli').value=nome;document.getElementById('acbox').style.display='none';calcEmp();updateCliScore();}
+function updateCliScore(){
+  var box=document.getElementById('fcli-score');if(!box)return;
+  var nome=document.getElementById('fcli').value.trim();
+  if(!nome){box.innerHTML='';return;}
+  var c=clis.find(function(x){return x.nome.toLowerCase()===nome.toLowerCase();});
+  if(!c){box.innerHTML='<span style="color:var(--t4)">🆕 Cliente novo (sem histórico)</span>';return;}
+  var s=scoreOf(c.nome);
+  var color=s>=70?'var(--g)':s>=40?'#ffb020':'var(--red)';
+  var emoji=s>=70?'🟢':s>=40?'🟡':'🔴';
+  box.innerHTML='Score do cliente: <b style="color:'+color+'">'+emoji+' '+s+'</b> · <span style="color:var(--t4)">'+statusOf(c)+'</span>';
+}
 function openEmpModal(id){
   var e=id?emps.find(function(x){return x.id===id;}):null;
   document.getElementById('m-emp-ttl').textContent=e?'Editar Empréstimo':'Novo Empréstimo';
@@ -983,7 +1001,7 @@ function openEmpModal(id){
   document.getElementById('fuph').style.display=e&&e.comp?'none':'block';
   if(e&&e.comp)document.getElementById('fuprev').src=e.comp;
   document.getElementById('acbox').style.display='none';
-  calcEmp();openModal('m-emp');
+  calcEmp();updateCliScore();openModal('m-emp');
 }
 function saveEmp(){
   var cli=document.getElementById('fcli').value.trim();
@@ -1389,7 +1407,32 @@ function renderRel(){
   var top=Object.entries(cliMap).sort(function(a,b){return b[1].luc-a[1].luc;}).slice(0,8);
   h+='<div class="sec">Top Clientes por Lucro</div>';
   h+=top.map(function(entry,i){var n=entry[0],d=entry[1];return '<div class="card" style="padding:11px;display:flex;gap:9px;align-items:center;margin-bottom:7px"><div style="font-size:16px;font-weight:900;color:var(--t4);width:18px">#'+(i+1)+'</div><div class="avatar">'+ini(n)+'</div><div style="flex:1"><div style="font-size:13px;font-weight:700">'+n+'</div><div style="font-size:10px;color:var(--t4)">'+d.n+' emp. • Lucro '+R(d.luc)+'</div></div><div style="text-align:right"><div style="font-size:13px;font-weight:900;color:var(--g)">'+R(d.fat)+'</div><div style="font-size:9px;color:var(--t4)">total</div></div></div>';}).join('');
+  h+=buildRelDetail();
   document.getElementById('pg-rel').innerHTML=h;
+}
+function buildRelDetail(){
+  var nomes=clis.map(function(c){return c.nome;});
+  emps.forEach(function(e){if(nomes.indexOf(e.cliente)<0)nomes.push(e.cliente);});
+  var d='<div id="rel-detail"><div class="sec">Detalhamento por Cliente</div>';
+  nomes.forEach(function(nome){
+    var c=clis.find(function(x){return x.nome===nome;});
+    var es=emps.filter(function(e){return e.cliente===nome;}).sort(function(a,b){return (a.dataEmp||'').localeCompare(b.dataEmp||'');});
+    if(!es.length)return;
+    var score=scoreOf(nome),status=c?statusOf(c):'Novo';
+    var emprestado=es.reduce(function(s,e){return s+(e.valor||0);},0);
+    var recebido=es.filter(function(e){return e.status==='Pago';}).reduce(function(s,e){return s+totRec(e);},0);
+    var pendente=es.filter(function(e){return e.status!=='Pago';}).reduce(function(s,e){return s+totRec(e);},0);
+    d+='<div class="rd-cli"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px"><b style="font-size:13px">'+nome+'</b><span style="font-size:11px">Score '+score+' · '+status+'</span></div>';
+    d+='<table class="rd-tbl"><thead><tr><th>ID</th><th>Parcela</th><th>Valor</th><th>Total</th><th>Vencimento</th><th>Status</th><th>Pago em</th></tr></thead><tbody>';
+    es.forEach(function(e){
+      d+='<tr><td>'+e.id+'</td><td>'+(e.parc||'1/1')+'</td><td>'+R(e.valor||0)+'</td><td>'+R(totRec(e))+'</td><td>'+(e.dataVenc||'—')+'</td><td>'+(e.status==='Pago'?'Pago':isCobrar(e)?'Atrasado':'Pendente')+'</td><td>'+(e.dataPag||'—')+'</td></tr>';
+    });
+    d+='</tbody></table>';
+    d+='<div style="display:flex;gap:14px;font-size:11px;font-weight:700;margin-top:4px"><span>Emprestado: '+R(emprestado)+'</span><span>Recebido: '+R(recebido)+'</span><span>Pendente: '+R(pendente)+'</span></div>';
+    d+='</div>';
+  });
+  d+='</div>';
+  return d;
 }
 function exportRelPDF(){
   if(curPage!=='rel'){showPg('rel',document.querySelectorAll('.nav .nb')[4]);}
@@ -1558,14 +1601,12 @@ function exportAndOpen(dest){
   var url=URL.createObjectURL(blob);
   var a=document.createElement('a');a.href=url;a.download='emprestai-'+tod()+'.json';a.click();
   URL.revokeObjectURL(url);
-  setTimeout(function(){
-    if(dest==='drive'){
-      window.open('https://drive.google.com','_blank');
-      toast('💾 Arquivo baixado! Envie para o Google Drive.');
-    }else{
-      toast('☁️ Arquivo baixado! Abra o app Arquivos e mova para iCloud Drive.');
-    }
-  },800);
+  if(dest==='drive'){
+    window.open('https://drive.google.com','_blank');
+    toast('💾 Arquivo baixado! Envie para o Google Drive.');
+  }else{
+    toast('☁️ Arquivo baixado! Abra o app Arquivos e mova para iCloud Drive.');
+  }
 }
 function doImport(ev){
   var f=ev.target.files[0];if(!f)return;
@@ -1582,8 +1623,19 @@ function doImport(ev){
         emps=d.emps;
       }else{throw new Error('inválido');}
       clis=d.clis||[];caixa=d.caixa||0;
-      saveEmps();saveClis();DB.sv('caixa',caixa);
+      saveEmpsLocal();saveClisLocal();DB.sv('caixa',caixa);
+      if(curUid){
+        clearTimeout(syncTimer);
+        var ts=new Date().toISOString();myLastTs=ts;
+        if(d.loans&&typeof d.loans==='object'){
+          Object.keys(d.loans).forEach(function(yr){fbDB.ref('u/'+curUid+'/loans/'+yr).set(d.loans[yr]||[]);});
+        }else{
+          fbDB.ref('u/'+curUid+'/loans/'+curYear).set(emps);
+        }
+        fbDB.ref('u/'+curUid).update({clis:clis,caixa:caixa,_ts:ts});
+      }
       document.getElementById('year-lbl').textContent=curYear;
+      ev.target.value='';
       closeModal('m-backup');renderDash();renderEmp();renderCal();renderRel();toast('✅ Backup restaurado!');
     }catch(err){toast('❌ Arquivo inválido');}
   };r.readAsText(f);
@@ -1704,6 +1756,7 @@ function resetLocalState(){
 
 fbAuth.onAuthStateChanged(function(user){
   var ls=document.getElementById('login-screen');
+  var bs=document.getElementById('boot-splash');
   if(tsRef){tsRef.off();tsRef=null;}
   if(user){
     curUid=user.uid;
@@ -1715,6 +1768,7 @@ fbAuth.onAuthStateChanged(function(user){
     renderDash();
     if(ls)ls.style.display='flex';
   }
+  if(bs)bs.style.display='none';
 });
 
 function fbLoadData(){
@@ -1763,6 +1817,13 @@ function fbSave(){
   },2000);
 }
 
+window.addEventListener('error',function(e){
+  console.error('Erro não tratado:',e.error||e.message);
+  toast('⚠️ Ops, algo falhou. Se o botão não responder, atualize a página.',3500);
+});
+window.addEventListener('unhandledrejection',function(e){
+  console.error('Promise rejeitada:',e.reason);
+});
 function init(){
   var d=new Date();
   document.getElementById('topdate').textContent=d.toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short',year:'numeric'}).replace(/^\w/,function(c){return c.toUpperCase();});
