@@ -364,10 +364,9 @@ input[type=file]{display:none;}
   <div class="page" id="pg-rel"></div>
   <div class="pg-ia" id="pg-ia">
     <div style="padding:13px 13px 0;flex-shrink:0">
-      <div style="background:rgba(206,147,216,.08);border:1px solid rgba(206,147,216,.2);border-radius:12px;padding:12px;margin-bottom:9px;display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <div><div style="font-size:12px;font-weight:800;color:var(--purple);margin-bottom:3px" id="ia-hdr-ttl">✨ IA Assistente</div>
-        <div style="font-size:11px;color:var(--t4)" id="ia-hdr-sub">Pergunte sobre seus empréstimos — funciona offline!</div></div>
-        <div onclick="openIaConfig()" style="flex-shrink:0;width:30px;height:30px;border-radius:9px;background:rgba(206,147,216,.15);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px" title="Configurar IA online">⚙️</div>
+      <div style="background:rgba(206,147,216,.08);border:1px solid rgba(206,147,216,.2);border-radius:12px;padding:12px;margin-bottom:9px">
+        <div style="font-size:12px;font-weight:800;color:var(--purple);margin-bottom:3px">✨ IA Assistente</div>
+        <div style="font-size:11px;color:var(--t4)" id="ia-hdr-sub">Pergunte sobre seus empréstimos — funciona offline!</div>
       </div>
       <div style="display:flex;gap:5px;overflow-x:auto;padding-bottom:7px;scrollbar-width:none" id="ia-chips"></div>
     </div>
@@ -555,23 +554,6 @@ input[type=file]{display:none;}
     <div class="fg"><label class="fl">Capital Total (R$)</label><input class="fi" id="caixainp" type="number" placeholder="Ex: 10000" inputmode="decimal" style="font-size:22px;text-align:center;font-weight:900" oninput="prevCaixa()"></div>
     <button class="btn bg" onclick="saveCaixa()">Salvar</button>
     <button class="btn bsec" onclick="closeModal('m-caixa')" style="margin-top:7px">Cancelar</button>
-  </div>
-</div>
-<div class="ov" id="m-iaconf" onclick="if(event.target.id==='m-iaconf')closeModal('m-iaconf')">
-  <div class="modal">
-    <div class="mbar"></div>
-    <div class="mtitle">⚙️ IA Online (OpenAI)</div>
-    <div id="iaconf-admin">
-      <p style="font-size:12px;color:var(--t4);margin-bottom:11px;line-height:1.5">Cole a URL e a senha do servidor (veja worker/README.md). Isso fica salvo na nuvem e é usado por <b>todas as contas</b> do sistema para conversar com a IA. A chave da OpenAI em si não passa por aqui — fica só no servidor.</p>
-      <div class="fg"><label class="fl">URL do servidor</label><input class="fi" id="iaurlinp" type="text" placeholder="https://emprestai-ia.SEUNOME.workers.dev" autocomplete="off"></div>
-      <div class="fg"><label class="fl">Senha (APP_SECRET)</label><input class="fi" id="iakeyinp" type="password" placeholder="a mesma senha do wrangler secret put APP_SECRET" autocomplete="off"></div>
-      <button class="btn bg" onclick="saveIaKey()">Salvar para todos</button>
-      <button class="btn bsec" onclick="removeIaKey()" style="margin-top:7px">Remover</button>
-    </div>
-    <div id="iaconf-readonly" style="display:none">
-      <p style="font-size:12px;color:var(--t4);line-height:1.5">A IA online é gerenciada pelo administrador do sistema. <span id="iaconf-status"></span></p>
-    </div>
-    <button class="btn bsec" onclick="closeModal('m-iaconf')" style="margin-top:7px">Fechar</button>
   </div>
 </div>
 <div class="ov" id="m-backup" onclick="if(event.target.id==='m-backup')closeModal('m-backup')">
@@ -1472,37 +1454,10 @@ function exportRelPDF(){
 }
 
 // ── IA CHAT ───────────────────────────────────
-var ADMIN_EMAIL='lokoporgame194@gmail.com';
-var IA_WORKER_DEFAULT='https://emprestai-ia.emprestai-ia.workers.dev';
-var IA_WORKER_URL=IA_WORKER_DEFAULT;
-var IA_APP_SECRET='';
+var IA_WORKER_URL='https://emprestai-ia.emprestai-ia.workers.dev';
+var IA_APP_SECRET='senhalaercio';
 var iaHistorico=[];
 var IA_CHIPS=['Quanto emprestei esse mês?','Quem está em atraso?','Qual meu lucro total?','Quanto tenho a receber?','Quem é meu melhor cliente?','Quem vence hoje?','Me dê um resumo geral','Quanto tenho disponível?','Qual minha taxa de recuperação?','Quanto de multa acumulei?'];
-function souAdminIA(){return !!(fbAuth.currentUser&&fbAuth.currentUser.email===ADMIN_EMAIL);}
-function openIaConfig(){
-  var admin=souAdminIA();
-  document.getElementById('iaconf-admin').style.display=admin?'block':'none';
-  document.getElementById('iaconf-readonly').style.display=admin?'none':'block';
-  if(admin){document.getElementById('iaurlinp').value=IA_WORKER_URL;document.getElementById('iakeyinp').value=IA_APP_SECRET;}
-  else document.getElementById('iaconf-status').textContent=IA_APP_SECRET?'A IA online já está ativa para sua conta.':'A IA online ainda não foi ativada.';
-  openModal('m-iaconf');
-}
-function saveIaKey(){
-  if(!souAdminIA()){toast('⚠️ Só o administrador pode alterar isso');return;}
-  var url=document.getElementById('iaurlinp').value.trim();
-  var sec=document.getElementById('iakeyinp').value.trim();
-  if(!url||!sec){toast('⚠️ Preencha a URL do servidor e a senha');return;}
-  fbDB.ref('config').update({iaWorkerUrl:url,iaSecret:sec}).then(function(){
-    closeModal('m-iaconf');toast('✅ Salvo! IA online ativada para todas as contas.');
-  }).catch(function(){toast('⚠️ Não foi possível salvar (sem permissão ou sem conexão)');});
-}
-function removeIaKey(){
-  if(!souAdminIA()){toast('⚠️ Só o administrador pode alterar isso');return;}
-  fbDB.ref('config').update({iaWorkerUrl:null,iaSecret:null}).then(function(){
-    document.getElementById('iaurlinp').value='';document.getElementById('iakeyinp').value='';
-    closeModal('m-iaconf');toast('🗑️ Removido. Voltando ao modo offline para todas as contas.');
-  }).catch(function(){toast('⚠️ Não foi possível remover (sem permissão ou sem conexão)');});
-}
 function renderIA(){
   var chat=document.getElementById('ia-chat');
   var now=new Date();
@@ -1844,7 +1799,6 @@ function doGoogleLogin(){
 function doLogout(){fbAuth.signOut();}
 
 var tsRef=null;
-var iaKeyRef=null;
 function resetLocalState(){
   emps=[];clis=[];caixa=0;anoHist={};
   DB.set('e_'+curYear,emps);DB.set('clis',clis);DB.sv('caixa',caixa);DB.set('ahist',anoHist);
@@ -1854,21 +1808,12 @@ fbAuth.onAuthStateChanged(function(user){
   var ls=document.getElementById('login-screen');
   var bs=document.getElementById('boot-splash');
   if(tsRef){tsRef.off();tsRef=null;}
-  if(iaKeyRef){iaKeyRef.off();iaKeyRef=null;}
   if(user){
     curUid=user.uid;
     if(ls)ls.style.display='none';
     fbLoadData();
-    iaKeyRef=fbDB.ref('config');
-    iaKeyRef.on('value',function(s){
-      var d=s.val()||{};
-      IA_WORKER_URL=d.iaWorkerUrl||IA_WORKER_DEFAULT;
-      IA_APP_SECRET=d.iaSecret||'';
-      if(curPage==='ia')renderIA();
-    });
   }else{
     curUid=null;
-    IA_WORKER_URL=IA_WORKER_DEFAULT;IA_APP_SECRET='';
     resetLocalState();
     renderDash();
     if(ls)ls.style.display='flex';
