@@ -7,10 +7,8 @@
       }
     },
     "config": {
-      "iaKey": {
-        ".read": "auth != null",
-        ".write": "auth != null && auth.token.email === 'lokoporgame194@gmail.com'"
-      }
+      ".read": "auth != null",
+      ".write": "auth != null && auth.token.email === 'lokoporgame194@gmail.com'"
     }
   }
 }

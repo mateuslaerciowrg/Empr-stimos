@@ -562,10 +562,11 @@ input[type=file]{display:none;}
     <div class="mbar"></div>
     <div class="mtitle">⚙️ IA Online (OpenAI)</div>
     <div id="iaconf-admin">
-      <p style="font-size:12px;color:var(--t4);margin-bottom:11px;line-height:1.5">Cole a chave da API da OpenAI (começa com "sk-"). Ela fica salva na nuvem e é usada por <b>todas as contas</b> do sistema para conversar com a IA.</p>
-      <div class="fg"><label class="fl">Chave da API (sk-...)</label><input class="fi" id="iakeyinp" type="password" placeholder="sk-..." autocomplete="off"></div>
+      <p style="font-size:12px;color:var(--t4);margin-bottom:11px;line-height:1.5">Cole a URL e a senha do servidor (veja worker/README.md). Isso fica salvo na nuvem e é usado por <b>todas as contas</b> do sistema para conversar com a IA. A chave da OpenAI em si não passa por aqui — fica só no servidor.</p>
+      <div class="fg"><label class="fl">URL do servidor</label><input class="fi" id="iaurlinp" type="text" placeholder="https://emprestai-ia.SEUNOME.workers.dev" autocomplete="off"></div>
+      <div class="fg"><label class="fl">Senha (APP_SECRET)</label><input class="fi" id="iakeyinp" type="password" placeholder="a mesma senha do wrangler secret put APP_SECRET" autocomplete="off"></div>
       <button class="btn bg" onclick="saveIaKey()">Salvar para todos</button>
-      <button class="btn bsec" onclick="removeIaKey()" style="margin-top:7px">Remover chave</button>
+      <button class="btn bsec" onclick="removeIaKey()" style="margin-top:7px">Remover</button>
     </div>
     <div id="iaconf-readonly" style="display:none">
       <p style="font-size:12px;color:var(--t4);line-height:1.5">A IA online é gerenciada pelo administrador do sistema. <span id="iaconf-status"></span></p>
@@ -1472,7 +1473,8 @@ function exportRelPDF(){
 
 // ── IA CHAT ───────────────────────────────────
 var ADMIN_EMAIL='lokoporgame194@gmail.com';
-var IA_OPENAI_KEY='';
+var IA_WORKER_URL='';
+var IA_APP_SECRET='';
 var iaHistorico=[];
 var IA_CHIPS=['Quanto emprestei esse mês?','Quem está em atraso?','Qual meu lucro total?','Quanto tenho a receber?','Quem é meu melhor cliente?','Quem vence hoje?','Me dê um resumo geral','Quanto tenho disponível?','Qual minha taxa de recuperação?','Quanto de multa acumulei?'];
 function souAdminIA(){return !!(fbAuth.currentUser&&fbAuth.currentUser.email===ADMIN_EMAIL);}
@@ -1480,23 +1482,24 @@ function openIaConfig(){
   var admin=souAdminIA();
   document.getElementById('iaconf-admin').style.display=admin?'block':'none';
   document.getElementById('iaconf-readonly').style.display=admin?'none':'block';
-  if(admin)document.getElementById('iakeyinp').value=IA_OPENAI_KEY;
-  else document.getElementById('iaconf-status').textContent=IA_OPENAI_KEY?'A IA online já está ativa para sua conta.':'A IA online ainda não foi ativada.';
+  if(admin){document.getElementById('iaurlinp').value=IA_WORKER_URL;document.getElementById('iakeyinp').value=IA_APP_SECRET;}
+  else document.getElementById('iaconf-status').textContent=IA_WORKER_URL?'A IA online já está ativa para sua conta.':'A IA online ainda não foi ativada.';
   openModal('m-iaconf');
 }
 function saveIaKey(){
-  if(!souAdminIA()){toast('⚠️ Só o administrador pode alterar a chave');return;}
-  var k=document.getElementById('iakeyinp').value.trim();
-  if(!k){toast('⚠️ Cole uma chave válida');return;}
-  fbDB.ref('config/iaKey').set(k).then(function(){
-    closeModal('m-iaconf');toast('✅ Chave salva! IA online ativada para todas as contas.');
+  if(!souAdminIA()){toast('⚠️ Só o administrador pode alterar isso');return;}
+  var url=document.getElementById('iaurlinp').value.trim();
+  var sec=document.getElementById('iakeyinp').value.trim();
+  if(!url||!sec){toast('⚠️ Preencha a URL do servidor e a senha');return;}
+  fbDB.ref('config').update({iaWorkerUrl:url,iaSecret:sec}).then(function(){
+    closeModal('m-iaconf');toast('✅ Salvo! IA online ativada para todas as contas.');
   }).catch(function(){toast('⚠️ Não foi possível salvar (sem permissão ou sem conexão)');});
 }
 function removeIaKey(){
-  if(!souAdminIA()){toast('⚠️ Só o administrador pode alterar a chave');return;}
-  fbDB.ref('config/iaKey').remove().then(function(){
-    document.getElementById('iakeyinp').value='';
-    closeModal('m-iaconf');toast('🗑️ Chave removida. Voltando ao modo offline para todas as contas.');
+  if(!souAdminIA()){toast('⚠️ Só o administrador pode alterar isso');return;}
+  fbDB.ref('config').update({iaWorkerUrl:null,iaSecret:null}).then(function(){
+    document.getElementById('iaurlinp').value='';document.getElementById('iakeyinp').value='';
+    closeModal('m-iaconf');toast('🗑️ Removido. Voltando ao modo offline para todas as contas.');
   }).catch(function(){toast('⚠️ Não foi possível remover (sem permissão ou sem conexão)');});
 }
 function renderIA(){
@@ -1505,8 +1508,8 @@ function renderIA(){
   var cobrar=emps.filter(isCobrar);
   var vencem=emps.filter(function(e){return e.status!=='Pago'&&e.dataVenc===now.toISOString().slice(0,10);});
   var sub=document.getElementById('ia-hdr-sub');
-  if(sub)sub.textContent=IA_OPENAI_KEY?'IA online ativada (OpenAI) ✓':'Pergunte sobre seus empréstimos — funciona offline!';
-  var bv=IA_OPENAI_KEY?'Olá! 👋 Sou a IA do EmprestAI, com inteligência da OpenAI.\n\nPergunte qualquer coisa sobre seus clientes, empréstimos e finanças!':'Olá! 👋 Sou a IA do EmprestAI.\n\nConheço todos os seus dados e respondo suas perguntas offline!';
+  if(sub)sub.textContent=IA_WORKER_URL?'IA online ativada (OpenAI) ✓':'Pergunte sobre seus empréstimos — funciona offline!';
+  var bv=IA_WORKER_URL?'Olá! 👋 Sou a IA do EmprestAI, com inteligência da OpenAI.\n\nPergunte qualquer coisa sobre seus clientes, empréstimos e finanças!':'Olá! 👋 Sou a IA do EmprestAI.\n\nConheço todos os seus dados e respondo suas perguntas offline!';
   if(cobrar.length)bv+='\n\n🚨 Você tem '+cobrar.length+' empréstimo(s) em atraso!';
   if(vencem.length)bv+='\n\n📅 '+vencem.length+' pagamento(s) vencem hoje!';
   if(!chat.innerHTML)chat.innerHTML=msgHTML('ai',bv);
@@ -1534,23 +1537,16 @@ function montarContextoIA(){
   return JSON.stringify({data_hoje:tod(),kpis:kpis,clientes:clientesResumo,emprestimos:empsResumo});
 }
 function iaRespostaRemota(msg){
-  var systemPrompt='Você é a IA do EmprestAI Pro, um app de gestão de empréstimos pessoais (crédito informal).\n'+
-    'Responda SEMPRE em português do Brasil, direto e objetivo, curto (poucas frases ou uma lista curta).\n'+
-    'Use os dados do CONTEXTO abaixo para responder — eles refletem o sistema no momento exato da pergunta.\n'+
-    'Nunca invente cliente, valor ou empréstimo que não esteja no CONTEXTO. Se a informação não estiver lá, diga que não tem esse dado.\n'+
-    'Use R$ para valores monetários e "**texto**" para destacar números importantes.\n\n'+
-    'CONTEXTO ATUAL DO SISTEMA:\n'+montarContextoIA();
-  return fetch('https://api.openai.com/v1/chat/completions',{
+  return fetch(IA_WORKER_URL,{
     method:'POST',
-    headers:{'Content-Type':'application/json','Authorization':'Bearer '+IA_OPENAI_KEY},
-    body:JSON.stringify({model:'gpt-4o-mini',messages:[{role:'system',content:systemPrompt},{role:'user',content:msg}],max_tokens:550,temperature:0.3})
+    headers:{'Content-Type':'application/json','X-App-Secret':IA_APP_SECRET},
+    body:JSON.stringify({pergunta:msg,contexto:montarContextoIA()})
   }).then(function(r){
-    if(!r.ok)throw new Error('openai_error_'+r.status);
+    if(!r.ok)throw new Error('worker_error_'+r.status);
     return r.json();
   }).then(function(d){
-    var resp=d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content;
-    if(!resp)throw new Error('resposta_vazia');
-    return resp;
+    if(!d.resposta)throw new Error('resposta_vazia');
+    return d.resposta;
   });
 }
 function sendIA(){
@@ -1569,7 +1565,7 @@ function sendIA(){
     chat.scrollTop=chat.scrollHeight;
     document.getElementById('ia-btn').disabled=false;
   }
-  if(IA_OPENAI_KEY){
+  if(IA_WORKER_URL){
     iaRespostaRemota(msg).then(mostrar).catch(function(){
       mostrar(iaResposta(msg.toLowerCase())+'\n\n_(⚠️ IA online indisponível no momento, respondi no modo offline)_');
     });
@@ -1862,14 +1858,16 @@ fbAuth.onAuthStateChanged(function(user){
     curUid=user.uid;
     if(ls)ls.style.display='none';
     fbLoadData();
-    iaKeyRef=fbDB.ref('config/iaKey');
+    iaKeyRef=fbDB.ref('config');
     iaKeyRef.on('value',function(s){
-      IA_OPENAI_KEY=s.val()||'';
+      var d=s.val()||{};
+      IA_WORKER_URL=d.iaWorkerUrl||'';
+      IA_APP_SECRET=d.iaSecret||'';
       if(curPage==='ia')renderIA();
     });
   }else{
     curUid=null;
-    IA_OPENAI_KEY='';
+    IA_WORKER_URL='';IA_APP_SECRET='';
     resetLocalState();
     renderDash();
     if(ls)ls.style.display='flex';
