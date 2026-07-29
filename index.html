@@ -364,9 +364,10 @@ input[type=file]{display:none;}
   <div class="page" id="pg-rel"></div>
   <div class="pg-ia" id="pg-ia">
     <div style="padding:13px 13px 0;flex-shrink:0">
-      <div style="background:rgba(206,147,216,.08);border:1px solid rgba(206,147,216,.2);border-radius:12px;padding:12px;margin-bottom:9px">
-        <div style="font-size:12px;font-weight:800;color:var(--purple);margin-bottom:3px">✨ IA Assistente</div>
-        <div style="font-size:11px;color:var(--t4)">Pergunte sobre seus empréstimos — funciona offline!</div>
+      <div style="background:rgba(206,147,216,.08);border:1px solid rgba(206,147,216,.2);border-radius:12px;padding:12px;margin-bottom:9px;display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div><div style="font-size:12px;font-weight:800;color:var(--purple);margin-bottom:3px" id="ia-hdr-ttl">✨ IA Assistente</div>
+        <div style="font-size:11px;color:var(--t4)" id="ia-hdr-sub">Pergunte sobre seus empréstimos — funciona offline!</div></div>
+        <div onclick="openIaConfig()" style="flex-shrink:0;width:30px;height:30px;border-radius:9px;background:rgba(206,147,216,.15);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px" title="Configurar IA online">⚙️</div>
       </div>
       <div style="display:flex;gap:5px;overflow-x:auto;padding-bottom:7px;scrollbar-width:none" id="ia-chips"></div>
     </div>
@@ -556,6 +557,22 @@ input[type=file]{display:none;}
     <button class="btn bsec" onclick="closeModal('m-caixa')" style="margin-top:7px">Cancelar</button>
   </div>
 </div>
+<div class="ov" id="m-iaconf" onclick="if(event.target.id==='m-iaconf')closeModal('m-iaconf')">
+  <div class="modal">
+    <div class="mbar"></div>
+    <div class="mtitle">⚙️ IA Online (OpenAI)</div>
+    <div id="iaconf-admin">
+      <p style="font-size:12px;color:var(--t4);margin-bottom:11px;line-height:1.5">Cole a chave da API da OpenAI (começa com "sk-"). Ela fica salva na nuvem e é usada por <b>todas as contas</b> do sistema para conversar com a IA.</p>
+      <div class="fg"><label class="fl">Chave da API (sk-...)</label><input class="fi" id="iakeyinp" type="password" placeholder="sk-..." autocomplete="off"></div>
+      <button class="btn bg" onclick="saveIaKey()">Salvar para todos</button>
+      <button class="btn bsec" onclick="removeIaKey()" style="margin-top:7px">Remover chave</button>
+    </div>
+    <div id="iaconf-readonly" style="display:none">
+      <p style="font-size:12px;color:var(--t4);line-height:1.5">A IA online é gerenciada pelo administrador do sistema. <span id="iaconf-status"></span></p>
+    </div>
+    <button class="btn bsec" onclick="closeModal('m-iaconf')" style="margin-top:7px">Fechar</button>
+  </div>
+</div>
 <div class="ov" id="m-backup" onclick="if(event.target.id==='m-backup')closeModal('m-backup')">
   <div class="modal">
     <div class="mbar"></div>
@@ -635,8 +652,19 @@ function juro(e){
   if(tipo==='parcela')return v*(t/100)*np;
   return v*t/100;
 }
-function multa(e){if(e.status==='Pago')return 0;var d=dLate(e.dataVenc,e.status);return d>0?d*40:0;}
-function totRec(e){return (e.valor||0)+juro(e)+multa(e);}
+function jurosDevido(e){return e.jrEmbed!=null?e.jrEmbed:juro(e);}
+function multa(e){if(e.status==='Pago')return e.multaPaga||0;var d=dLate(e.dataVenc,e.status);return d>0?d*40:0;}
+function totRec(e){return (e.valor||0)+jurosDevido(e)+multa(e);}
+function lucroDe(e){return e.lucro!=null?e.lucro:jurosDevido(e)+multa(e);}
+function pagoFinal(e){return {status:'Pago',dataPag:tod(),multaPaga:multa(e),lucro:(e.lucroAcum||0)+jurosDevido(e)+multa(e)};}
+function aplicarParcial(e,pago){
+  var jr=jurosDevido(e),mt=multa(e),princ=e.valor||0;
+  var resta=Math.max(princ+jr+mt-pago,0);
+  if(resta<=0)return Object.assign({},e,pagoFinal(e));
+  var mPaid=Math.min(pago,mt),rem=pago-mPaid;
+  var jPaid=Math.min(rem,jr);rem-=jPaid;
+  return Object.assign({},e,{valor:Math.max(princ-rem,0),taxa:0,jrEmbed:Math.max(jr-jPaid,0),dataVenc:mPaid>0?tod():e.dataVenc,lucroAcum:(e.lucroAcum||0)+mPaid+jPaid});
+}
 function devCliente(nome){return emps.filter(function(e){return e.cliente===nome&&e.status!=='Pago';}).reduce(function(s,e){return s+totRec(e);},0);}
 function isCobrar(e){return e.status!=='Pago'&&dLate(e.dataVenc,e.status)>0;}
 function scoreOf(nome){
@@ -723,7 +751,7 @@ function renderDash(){
   var cobrar=emps.filter(isCobrar);
   var capRua=ativos.reduce(function(s,e){return s+(e.valor||0);},0);
   var aRec=ativos.reduce(function(s,e){return s+totRec(e);},0);
-  var lucTot=pagos.reduce(function(s,e){return s+juro(e);},0);
+  var lucTot=pagos.reduce(function(s,e){return s+lucroDe(e);},0);
   var emAtr=cobrar.reduce(function(s,e){return s+totRec(e);},0);
   var capTot=emps.reduce(function(s,e){return s+(e.valor||0);},0);
   var mg=capTot>0?((lucTot/capTot)*100).toFixed(1):0;
@@ -754,9 +782,9 @@ function renderDash(){
   h+='<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--t4);margin-top:2px;font-weight:600"><span>'+comp.toFixed(0)+'% comprometido</span><span>Toque para editar</span></div></div>';
   h+='<div class="kgrid">';
   h+='<div class="kpi kp"><div class="kl">📆 Fat. Ano</div><div class="kv">'+R(paAno.reduce(function(s,e){return s+totRec(e);},0))+'</div><div class="ks">'+paAno.length+' pagos</div></div>';
-  h+='<div class="kpi kp"><div class="kl">💎 Lucro Ano</div><div class="kv">'+R(paAno.reduce(function(s,e){return s+juro(e);},0))+'</div><div class="ks">juros recebidos</div></div>';
+  h+='<div class="kpi kp"><div class="kl">💎 Lucro Ano</div><div class="kv">'+R(paAno.reduce(function(s,e){return s+lucroDe(e);},0))+'</div><div class="ks">juros recebidos</div></div>';
   h+='<div class="kpi kb"><div class="kl">📅 Fat. Mês</div><div class="kv">'+R(paMes.reduce(function(s,e){return s+totRec(e);},0))+'</div><div class="ks">'+MFL[mo]+'</div></div>';
-  h+='<div class="kpi kb"><div class="kl">💵 Lucro Mês</div><div class="kv">'+R(paMes.reduce(function(s,e){return s+juro(e);},0))+'</div><div class="ks">'+MFL[mo]+'</div></div>';
+  h+='<div class="kpi kb"><div class="kl">💵 Lucro Mês</div><div class="kv">'+R(paMes.reduce(function(s,e){return s+lucroDe(e);},0))+'</div><div class="ks">'+MFL[mo]+'</div></div>';
   h+='</div>';
   h+='<div class="card" style="padding:11px;margin-bottom:10px">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px"><span style="font-size:10px;font-weight:700;color:var(--t4);text-transform:uppercase;letter-spacing:.4px">Taxa de Recuperação</span><span style="font-size:13px;font-weight:900;color:var(--g)">'+taxa+'%</span></div>';
@@ -809,7 +837,7 @@ function lcard(e){
   h+='</div></div></div>';
   h+='<div class="lgrid">';
   h+='<div class="lb"><div class="lb-l">Principal</div><div class="lb-v">'+R(e.valor)+'</div></div>';
-  h+='<div class="lb"><div class="lb-l">Juros '+( e.taxa||40)+'%</div><div class="lb-v go">'+R(juro(e))+'</div></div>';
+  h+='<div class="lb"><div class="lb-l">Juros '+( e.taxa||40)+'%</div><div class="lb-v go">'+R(jurosDevido(e))+'</div></div>';
   h+='<div class="lb"><div class="lb-l">Vence</div><div class="lb-v'+(d>0&&e.status!=='Pago'?' r':'')+'">'+fD(e.dataVenc)+'</div></div>';
   h+='</div>';
   if(e.obs)h+='<div style="font-size:10px;color:var(--t4);">📝 '+e.obs+'</div>';
@@ -913,7 +941,7 @@ function openDet(id){
   h+='<div class="mcard" style="background:rgba(0,230,118,.06);border-color:rgba(0,230,118,.15);">';
   h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;text-align:center">';
   h+='<div><div style="font-size:9px;color:var(--t4)">PRINCIPAL</div><div style="font-size:15px;font-weight:900">'+R(e.valor)+'</div></div>';
-  h+='<div><div style="font-size:9px;color:var(--t4)">JUROS '+( e.taxa||40)+'%</div><div style="font-size:15px;font-weight:900;color:var(--gold)">'+R(juro(e))+'</div></div>';
+  h+='<div><div style="font-size:9px;color:var(--t4)">JUROS '+( e.taxa||40)+'%</div><div style="font-size:15px;font-weight:900;color:var(--gold)">'+R(jurosDevido(e))+'</div></div>';
   h+='<div><div style="font-size:9px;color:var(--t4)">TOTAL</div><div style="font-size:15px;font-weight:900;color:var(--g)">'+R(totRec(e))+'</div></div>';
   h+='</div></div>';
   h+='<div class="mcard"><div class="dr"><span class="dk">ID</span><span class="dv" style="color:var(--g)">'+e.id+'</span></div>';
@@ -1063,7 +1091,7 @@ function calcPag(){
   }else if(tipo==='juros'){
     res.style.display='flex';
     document.getElementById('pag-rl').textContent='Juros a receber';
-    document.getElementById('pag-rv').textContent=R(juro(e));
+    document.getElementById('pag-rv').textContent=R(jurosDevido(e));
   }else{res.style.display='none';}
 }
 function confirmPag(){
@@ -1073,18 +1101,19 @@ function confirmPag(){
   var tipo=document.getElementById('pagtipo').value;
   var comp=document.getElementById('pagcomp').value;
   if(tipo==='total'){
-    emps[i]=Object.assign({},e,{status:'Pago',dataPag:tod(),comp:comp||e.comp});
+    emps[i]=Object.assign({},e,pagoFinal(e),{comp:comp||e.comp});
     toast('✅ Pago TOTAL!');
   }else if(tipo==='juros'){
-    var jRec={id:nextEmpId(),cliente:e.cliente,valor:juro(e),taxa:0,nparc:1,jtipo:'total',dataEmp:tod(),dataVenc:tod(),parc:'Juros '+e.id,status:'Pago',dataPag:tod(),obs:'Juros de '+e.id,comp:comp,origem:'reneg'};
+    var jv=jurosDevido(e);
+    var jRec={id:nextEmpId(),cliente:e.cliente,valor:jv,lucro:jv,taxa:0,nparc:1,jtipo:'total',dataEmp:tod(),dataVenc:tod(),parc:'Juros '+e.id,status:'Pago',dataPag:tod(),obs:'Juros de '+e.id,comp:comp,origem:'reneg'};
     emps.push(jRec);
-    emps[i]=Object.assign({},e,{dataVenc:addDays(e.dataVenc,30),status:'Pendente'});
+    emps[i]=Object.assign({},e,{dataVenc:addDays(e.dataVenc,30),status:'Pendente'},e.jrEmbed!=null?{jrEmbed:0}:{});
     toast('✅ Juros recebidos! Renovado +30 dias.');
   }else{
     var pago=parseFloat(document.getElementById('pagval').value)||0;
-    var resta=Math.max(totRec(e)-pago,0);
-    if(resta<=0){emps[i]=Object.assign({},e,{status:'Pago',dataPag:tod(),comp:comp||e.comp});toast('✅ Pago total!');}
-    else{emps[i]=Object.assign({},e,{valor:resta,taxa:0,obs:'Parcial '+R(pago)+'. '+(e.obs||'')});toast('✅ Parcial registrado!');}
+    var novo=aplicarParcial(e,pago);
+    if(novo.status==='Pago'){emps[i]=Object.assign({},novo,{comp:comp||e.comp});toast('✅ Pago total!');}
+    else{emps[i]=Object.assign({},novo,{obs:'Parcial '+R(pago)+'. '+(e.obs||'')});toast('✅ Parcial registrado!');}
   }
   saveEmps();closeModal('m-pag');renderDash();renderEmp();renderCli();
 }
@@ -1105,7 +1134,7 @@ function calcReneg(){
   var res=document.getElementById('rn-res');
   if(tipo==='juros'){
     campos.innerHTML='<div class="fg"><label class="fl">Nova Data Vencimento</label><input class="fi" id="rn-dvenc" type="date" value="'+addDays(e.dataVenc,30)+'"></div>';
-    res.style.display='flex';document.getElementById('rn-rl').textContent='Cliente paga hoje';document.getElementById('rn-rv').textContent=R(juro(e));
+    res.style.display='flex';document.getElementById('rn-rl').textContent='Cliente paga hoje';document.getElementById('rn-rv').textContent=R(jurosDevido(e));
   }else if(tipo==='parcial'){
     campos.innerHTML='<div class="fg"><label class="fl">Valor que Paga Agora</label><input class="fi" id="rn-vpago" type="number" inputmode="decimal" oninput="calcReneg()"><input type="hidden" id="rn-dvenc" value="'+addDays(e.dataVenc,30)+'"></div>';
     var vp=parseFloat((document.getElementById('rn-vpago')||{value:'0'}).value)||0;
@@ -1128,22 +1157,24 @@ function saveReneg(){
   var tipo=document.getElementById('rntipo').value;
   var dvenc=(document.getElementById('rn-dvenc')||{value:addDays(tod(),30)}).value||addDays(tod(),30);
   if(tipo==='juros'){
-    var jRec={id:nextEmpId(),cliente:e.cliente,valor:juro(e),taxa:0,nparc:1,jtipo:'total',dataEmp:tod(),dataVenc:tod(),parc:'Juros '+e.id,status:'Pago',dataPag:tod(),obs:'Juros de '+e.id,origem:'reneg'};
-    emps.push(jRec);emps[i]=Object.assign({},e,{dataVenc:dvenc,status:'Renegociado'});toast('✅ Juros registrados!');
+    var jv=jurosDevido(e);
+    var jRec={id:nextEmpId(),cliente:e.cliente,valor:jv,lucro:jv,taxa:0,nparc:1,jtipo:'total',dataEmp:tod(),dataVenc:tod(),parc:'Juros '+e.id,status:'Pago',dataPag:tod(),obs:'Juros de '+e.id,origem:'reneg'};
+    emps.push(jRec);emps[i]=Object.assign({},e,{dataVenc:dvenc,status:'Renegociado'},e.jrEmbed!=null?{jrEmbed:0}:{});toast('✅ Juros registrados!');
   }else if(tipo==='parcial'){
     var vp=parseFloat((document.getElementById('rn-vpago')||{value:'0'}).value)||0;
-    var resta=Math.max(totRec(e)-vp,0);
-    if(resta<=0){emps[i]=Object.assign({},e,{status:'Pago',dataPag:tod()});toast('✅ Quitado!');}
-    else{emps[i]=Object.assign({},e,{valor:resta,taxa:0,dataVenc:dvenc,status:'Renegociado'});toast('✅ Parcial!');}
+    var novo=aplicarParcial(e,vp);
+    if(novo.status==='Pago'){emps[i]=novo;toast('✅ Quitado!');}
+    else{emps[i]=Object.assign({},novo,{dataVenc:dvenc,status:'Renegociado'});toast('✅ Parcial!');}
   }else if(tipo==='parcelar'){
     var np=parseInt((document.getElementById('rn-np')||{value:'2'}).value)||2;
     var tj=parseFloat((document.getElementById('rn-tajur')||{value:'10'}).value)||10;
-    var nt=totRec(e)*(1+tj/100);var pv=nt/np;
+    var princ=e.valor||0;var nt=totRec(e)*(1+tj/100);
+    var princPer=princ/np,profitPer=(nt-princ)/np;
     emps.splice(i,1);
-    for(var p=1;p<=np;p++){emps.push({id:nextEmpId(),cliente:e.cliente,valor:pv,taxa:0,nparc:1,jtipo:'total',dataEmp:tod(),dataVenc:addDays(dvenc,(p-1)*30),parc:p+'/'+np,status:'Pendente',dataPag:'',obs:'Parcela '+p+'/'+np+' de '+e.id,origem:'reneg'});}
+    for(var p=1;p<=np;p++){emps.push({id:nextEmpId(),cliente:e.cliente,valor:princPer,jrEmbed:profitPer,taxa:0,nparc:1,jtipo:'total',dataEmp:tod(),dataVenc:addDays(dvenc,(p-1)*30),parc:p+'/'+np,status:'Pendente',dataPag:'',obs:'Parcela '+p+'/'+np+' de '+e.id,origem:'reneg'});}
     toast('✅ Parcelado em '+np+'x!');
   }else{
-    emps[i]=Object.assign({},e,{status:'Pago',dataPag:tod()});toast('✅ Quitado!');
+    emps[i]=Object.assign({},e,pagoFinal(e),{dataPag:dvenc||tod()});toast('✅ Quitado!');
   }
   saveEmps();closeModal('m-reneg');renderDash();renderEmp();renderCli();
 }
@@ -1153,7 +1184,7 @@ function openCobr(id){
   var e=emps.find(function(x){return x.id===id;});if(!e)return;
   var cli=clis.find(function(c){return c.nome===e.cliente;})||{};
   if(!cli.tel){toast('⚠️ Cadastre o telefone');return;}
-  var d=dLate(e.dataVenc,e.status),mt=multa(e),tot=totRec(e),jur=juro(e),venc=fD(e.dataVenc);
+  var d=dLate(e.dataVenc,e.status),mt=multa(e),tot=totRec(e),jur=jurosDevido(e),venc=fD(e.dataVenc);
   var h='<div style="display:flex;gap:10px;align-items:center;margin-bottom:12px"><div class="avatar">'+ini(e.cliente)+'</div><div><div style="font-size:14px;font-weight:800">'+e.cliente+'</div><div style="font-size:11px;color:var(--t4)">'+e.id+' • 📱 '+cli.tel+'</div></div></div>';
   h+='<div class="mcard" style="margin-bottom:12px"><div class="dr"><span class="dk">Total</span><span class="dv" style="color:var(--g)">'+R(tot)+'</span></div><div class="dr"><span class="dk">Juros</span><span class="dv" style="color:var(--gold)">'+R(jur)+'</span></div>'+(mt>0?'<div class="dr"><span class="dk">Multa</span><span class="dv" style="color:var(--red)">'+R(mt)+'</span></div>':'')+'<div class="dr"><span class="dk">Vencimento</span><span class="dv"'+(d>0?' style="color:var(--red)"':'')+'>'+venc+(d>0?' • '+d+'d atraso':'')+'</span></div></div>';
   h+='<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:11px">';
@@ -1167,7 +1198,7 @@ function enviarWA(id,tipo){
   var e=emps.find(function(x){return x.id===id;});if(!e)return;
   var cli=clis.find(function(c){return c.nome===e.cliente;})||{};
   if(!cli.tel){toast('⚠️ Telefone não cadastrado');return;}
-  var d=dLate(e.dataVenc,e.status),mt=multa(e),tot=totRec(e),jur=juro(e),venc=fD(e.dataVenc);
+  var d=dLate(e.dataVenc,e.status),mt=multa(e),tot=totRec(e),jur=jurosDevido(e),venc=fD(e.dataVenc);
   var msg='';
   var data=new Date().toLocaleDateString('pt-BR');
   var empresa='*FaciliteCredit*';
@@ -1274,7 +1305,7 @@ function openCliDet(id){
   var c=clis.find(function(x){return x.id===id;});if(!c)return;
   var ec=emps.filter(function(e){return e.cliente===c.nome;});
   var dev=devCliente(c.nome);
-  var lucC=ec.filter(function(e){return e.status==='Pago';}).reduce(function(s,e){return s+juro(e);},0);
+  var lucC=ec.filter(function(e){return e.status==='Pago';}).reduce(function(s,e){return s+lucroDe(e);},0);
   var sc=scoreOf(c.nome);
   var foto=c.foto?'<img class="cli-photo" style="width:52px;height:52px;border-radius:11px" src="'+c.foto+'">':'<div class="avatar" style="width:52px;height:52px;font-size:18px">'+ini(c.nome)+'</div>';
   var stAtual=statusOf(c);
@@ -1306,7 +1337,7 @@ function openCliDet(id){
       h+='</div>';
       h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px">';
       h+='<div style="background:var(--bg3);border-radius:6px;padding:5px 7px"><div style="font-size:9px;color:var(--t4);font-weight:700;text-transform:uppercase">Principal</div><div style="font-size:11px;font-weight:800">'+R(e.valor)+'</div></div>';
-      h+='<div style="background:var(--bg3);border-radius:6px;padding:5px 7px"><div style="font-size:9px;color:var(--t4);font-weight:700;text-transform:uppercase">Juros</div><div style="font-size:11px;font-weight:800;color:var(--gold)">'+R(juro(e))+'</div></div>';
+      h+='<div style="background:var(--bg3);border-radius:6px;padding:5px 7px"><div style="font-size:9px;color:var(--t4);font-weight:700;text-transform:uppercase">Juros</div><div style="font-size:11px;font-weight:800;color:var(--gold)">'+R(jurosDevido(e))+'</div></div>';
       h+='<div style="background:var(--bg3);border-radius:6px;padding:5px 7px"><div style="font-size:9px;color:var(--t4);font-weight:700;text-transform:uppercase">Vence</div><div style="font-size:11px;font-weight:800'+(d>0&&s!=='Pago'?';color:var(--red)':'')+'">'+(e.dataVenc?fD(e.dataVenc):'—')+'</div></div>';
       h+='</div>';
       if(mt>0)h+='<div style="font-size:10px;color:var(--red);font-weight:700;margin-top:5px">🚨 Multa: '+R(mt)+' ('+d+'d × R$40)</div>';
@@ -1371,10 +1402,10 @@ function calN(){calSel=null;if(++calM>11){calM=0;calY++;}renderCal();}
 function renderRel(){
   var yr=curYear,pagos=emps.filter(function(e){return e.status==='Pago';});
   var ativos=emps.filter(function(e){return e.status!=='Pago';});
-  var lucTot=pagos.reduce(function(s,e){return s+juro(e);},0);
+  var lucTot=pagos.reduce(function(s,e){return s+lucroDe(e);},0);
   var fatTot=pagos.reduce(function(s,e){return s+totRec(e);},0);
   var data=Array(12).fill(0);
-  pagos.filter(function(e){return e.dataPag&&new Date(e.dataPag+'T00:00:00').getFullYear()===yr;}).forEach(function(e){data[new Date(e.dataPag+'T00:00:00').getMonth()]+=juro(e);});
+  pagos.filter(function(e){return e.dataPag&&new Date(e.dataPag+'T00:00:00').getFullYear()===yr;}).forEach(function(e){data[new Date(e.dataPag+'T00:00:00').getMonth()]+=lucroDe(e);});
   var max=Math.max.apply(null,data.concat([1]));
   var curM=new Date().getMonth();
   var h='<div class="kgrid"><div class="kpi kg"><div class="kl">Faturamento</div><div class="kv">'+R(fatTot)+'</div><div class="ks">'+pagos.length+' pagos</div></div><div class="kpi kgo"><div class="kl">Lucro</div><div class="kv">'+R(lucTot)+'</div><div class="ks">juros recebidos</div></div><div class="kpi kb"><div class="kl">Contratos</div><div class="kv">'+emps.length+'</div><div class="ks">'+ativos.length+' ativos</div></div><div class="kpi kr"><div class="kl">Inadimpl.</div><div class="kv">'+(emps.length?Math.round(emps.filter(isCobrar).length/emps.length*100):0)+'%</div><div class="ks">'+emps.filter(isCobrar).length+' em atraso</div></div></div>';
@@ -1390,7 +1421,7 @@ function renderRel(){
     }
   });
   pagos.filter(function(e){return e.dataPag&&new Date(e.dataPag+'T00:00:00').getFullYear()===yr;}).forEach(function(e){
-    entradasM[new Date(e.dataPag+'T00:00:00').getMonth()]+=(e.valor||0)+juro(e);
+    entradasM[new Date(e.dataPag+'T00:00:00').getMonth()]+=totRec(e);
   });
   var maxFC=Math.max.apply(null,entradasM.concat(saidasM).concat([1]));
   h+='<div class="sec">💰 Fluxo de Caixa</div><div class="card" style="padding:11px 9px 8px;overflow-x:auto"><div style="display:flex;align-items:flex-end;gap:4px;height:85px;min-width:max-content;padding:0 2px">';
@@ -1403,7 +1434,7 @@ function renderRel(){
   }
   h+='</div><div style="display:flex;gap:14px;justify-content:center;margin-top:6px;font-size:10px;font-weight:700"><span style="color:var(--g)">● Entrada</span><span style="color:var(--red)">● Saída</span></div></div>';
   var cliMap={};
-  emps.forEach(function(e){if(!cliMap[e.cliente])cliMap[e.cliente]={n:0,fat:0,luc:0};cliMap[e.cliente].n++;cliMap[e.cliente].fat+=totRec(e);cliMap[e.cliente].luc+=juro(e);});
+  emps.forEach(function(e){if(!cliMap[e.cliente])cliMap[e.cliente]={n:0,fat:0,luc:0};cliMap[e.cliente].n++;cliMap[e.cliente].fat+=totRec(e);cliMap[e.cliente].luc+=lucroDe(e);});
   var top=Object.entries(cliMap).sort(function(a,b){return b[1].luc-a[1].luc;}).slice(0,8);
   h+='<div class="sec">Top Clientes por Lucro</div>';
   h+=top.map(function(entry,i){var n=entry[0],d=entry[1];return '<div class="card" style="padding:11px;display:flex;gap:9px;align-items:center;margin-bottom:7px"><div style="font-size:16px;font-weight:900;color:var(--t4);width:18px">#'+(i+1)+'</div><div class="avatar">'+ini(n)+'</div><div style="flex:1"><div style="font-size:13px;font-weight:700">'+n+'</div><div style="font-size:10px;color:var(--t4)">'+d.n+' emp. • Lucro '+R(d.luc)+'</div></div><div style="text-align:right"><div style="font-size:13px;font-weight:900;color:var(--g)">'+R(d.fat)+'</div><div style="font-size:9px;color:var(--t4)">total</div></div></div>';}).join('');
@@ -1440,14 +1471,42 @@ function exportRelPDF(){
 }
 
 // ── IA CHAT ───────────────────────────────────
+var ADMIN_EMAIL='lokoporgame194@gmail.com';
+var IA_OPENAI_KEY='';
 var iaHistorico=[];
 var IA_CHIPS=['Quanto emprestei esse mês?','Quem está em atraso?','Qual meu lucro total?','Quanto tenho a receber?','Quem é meu melhor cliente?','Quem vence hoje?','Me dê um resumo geral','Quanto tenho disponível?','Qual minha taxa de recuperação?','Quanto de multa acumulei?'];
+function souAdminIA(){return !!(fbAuth.currentUser&&fbAuth.currentUser.email===ADMIN_EMAIL);}
+function openIaConfig(){
+  var admin=souAdminIA();
+  document.getElementById('iaconf-admin').style.display=admin?'block':'none';
+  document.getElementById('iaconf-readonly').style.display=admin?'none':'block';
+  if(admin)document.getElementById('iakeyinp').value=IA_OPENAI_KEY;
+  else document.getElementById('iaconf-status').textContent=IA_OPENAI_KEY?'A IA online já está ativa para sua conta.':'A IA online ainda não foi ativada.';
+  openModal('m-iaconf');
+}
+function saveIaKey(){
+  if(!souAdminIA()){toast('⚠️ Só o administrador pode alterar a chave');return;}
+  var k=document.getElementById('iakeyinp').value.trim();
+  if(!k){toast('⚠️ Cole uma chave válida');return;}
+  fbDB.ref('config/iaKey').set(k).then(function(){
+    closeModal('m-iaconf');toast('✅ Chave salva! IA online ativada para todas as contas.');
+  }).catch(function(){toast('⚠️ Não foi possível salvar (sem permissão ou sem conexão)');});
+}
+function removeIaKey(){
+  if(!souAdminIA()){toast('⚠️ Só o administrador pode alterar a chave');return;}
+  fbDB.ref('config/iaKey').remove().then(function(){
+    document.getElementById('iakeyinp').value='';
+    closeModal('m-iaconf');toast('🗑️ Chave removida. Voltando ao modo offline para todas as contas.');
+  }).catch(function(){toast('⚠️ Não foi possível remover (sem permissão ou sem conexão)');});
+}
 function renderIA(){
   var chat=document.getElementById('ia-chat');
   var now=new Date();
   var cobrar=emps.filter(isCobrar);
   var vencem=emps.filter(function(e){return e.status!=='Pago'&&e.dataVenc===now.toISOString().slice(0,10);});
-  var bv='Olá! 👋 Sou a IA do EmprestAI.\n\nConheço todos os seus dados e respondo suas perguntas offline!';
+  var sub=document.getElementById('ia-hdr-sub');
+  if(sub)sub.textContent=IA_OPENAI_KEY?'IA online ativada (OpenAI) ✓':'Pergunte sobre seus empréstimos — funciona offline!';
+  var bv=IA_OPENAI_KEY?'Olá! 👋 Sou a IA do EmprestAI, com inteligência da OpenAI.\n\nPergunte qualquer coisa sobre seus clientes, empréstimos e finanças!':'Olá! 👋 Sou a IA do EmprestAI.\n\nConheço todos os seus dados e respondo suas perguntas offline!';
   if(cobrar.length)bv+='\n\n🚨 Você tem '+cobrar.length+' empréstimo(s) em atraso!';
   if(vencem.length)bv+='\n\n📅 '+vencem.length+' pagamento(s) vencem hoje!';
   if(!chat.innerHTML)chat.innerHTML=msgHTML('ai',bv);
@@ -1461,6 +1520,39 @@ function msgHTML(role,txt){
   return '<div class="ia-msg ai"><div class="ia-avatar">✨</div><div class="ia-bubble">'+body+'</div></div>';
 }
 function iaChip(i){document.getElementById('ia-inp').value=IA_CHIPS[i];sendIA();}
+function montarContextoIA(){
+  var pagos=emps.filter(function(e){return e.status==='Pago';});
+  var ativos=emps.filter(function(e){return e.status!=='Pago';});
+  var cobrar=emps.filter(isCobrar);
+  var capRua=ativos.reduce(function(s,e){return s+(e.valor||0);},0);
+  var aRec=ativos.reduce(function(s,e){return s+totRec(e);},0);
+  var lucTot=pagos.reduce(function(s,e){return s+lucroDe(e);},0);
+  var dispon=Math.max(caixa-capRua,0);
+  var kpis={capital_total:caixa,capital_na_rua:capRua,disponivel:dispon,a_receber:aRec,lucro_total_recebido:lucTot,em_atraso_qtd:cobrar.length,em_atraso_valor:cobrar.reduce(function(s,e){return s+totRec(e);},0),total_clientes:clis.length,total_contratos:emps.length,contratos_pagos:pagos.length,contratos_ativos:ativos.length};
+  var clientesResumo=clis.slice(0,80).map(function(c){return {nome:c.nome,score:scoreOf(c.nome),status:statusOf(c),divida_aberta:devCliente(c.nome),telefone:c.tel||''};});
+  var empsResumo=emps.slice().sort(function(a,b){return (b.dataEmp||'').localeCompare(a.dataEmp||'');}).slice(0,150).map(function(e){return {id:e.id,cliente:e.cliente,principal:e.valor,juros:jurosDevido(e),multa:multa(e),total:totRec(e),status:e.status,vencimento:e.dataVenc,pago_em:e.dataPag||null,dias_atraso:dLate(e.dataVenc,e.status)};});
+  return JSON.stringify({data_hoje:tod(),kpis:kpis,clientes:clientesResumo,emprestimos:empsResumo});
+}
+function iaRespostaRemota(msg){
+  var systemPrompt='Você é a IA do EmprestAI Pro, um app de gestão de empréstimos pessoais (crédito informal).\n'+
+    'Responda SEMPRE em português do Brasil, direto e objetivo, curto (poucas frases ou uma lista curta).\n'+
+    'Use os dados do CONTEXTO abaixo para responder — eles refletem o sistema no momento exato da pergunta.\n'+
+    'Nunca invente cliente, valor ou empréstimo que não esteja no CONTEXTO. Se a informação não estiver lá, diga que não tem esse dado.\n'+
+    'Use R$ para valores monetários e "**texto**" para destacar números importantes.\n\n'+
+    'CONTEXTO ATUAL DO SISTEMA:\n'+montarContextoIA();
+  return fetch('https://api.openai.com/v1/chat/completions',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+IA_OPENAI_KEY},
+    body:JSON.stringify({model:'gpt-4o-mini',messages:[{role:'system',content:systemPrompt},{role:'user',content:msg}],max_tokens:550,temperature:0.3})
+  }).then(function(r){
+    if(!r.ok)throw new Error('openai_error_'+r.status);
+    return r.json();
+  }).then(function(d){
+    var resp=d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content;
+    if(!resp)throw new Error('resposta_vazia');
+    return resp;
+  });
+}
 function sendIA(){
   var inp=document.getElementById('ia-inp');
   var msg=inp.value.trim();if(!msg)return;
@@ -1470,14 +1562,20 @@ function sendIA(){
   chat.innerHTML+='<div class="ia-msg ai" id="ia-typing"><div class="ia-avatar">✨</div><div class="ia-bubble"><div class="dot-ani"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div></div></div>';
   chat.scrollTop=chat.scrollHeight;
   document.getElementById('ia-btn').disabled=true;
-  setTimeout(function(){
+  function mostrar(resp){
     var typing=document.getElementById('ia-typing');if(typing)typing.remove();
-    var resp=iaResposta(msg.toLowerCase());
     iaHistorico.push({q:msg,a:resp});
     chat.innerHTML+=msgHTML('ai',resp);
     chat.scrollTop=chat.scrollHeight;
     document.getElementById('ia-btn').disabled=false;
-  },700);
+  }
+  if(IA_OPENAI_KEY){
+    iaRespostaRemota(msg).then(mostrar).catch(function(){
+      mostrar(iaResposta(msg.toLowerCase())+'\n\n_(⚠️ IA online indisponível no momento, respondi no modo offline)_');
+    });
+  }else{
+    setTimeout(function(){mostrar(iaResposta(msg.toLowerCase()));},700);
+  }
 }
 function iaResposta(q){
   var NL='\n';
@@ -1487,13 +1585,13 @@ function iaResposta(q){
   var cobrar=emps.filter(isCobrar);
   var capRua=ativos.reduce(function(s,e){return s+(e.valor||0);},0);
   var aRec=ativos.reduce(function(s,e){return s+totRec(e);},0);
-  var lucTot=pagos.reduce(function(s,e){return s+juro(e);},0);
+  var lucTot=pagos.reduce(function(s,e){return s+lucroDe(e);},0);
   var multaTot=ativos.reduce(function(s,e){return s+multa(e);},0);
   var dispon=Math.max(caixa-capRua,0);
   var ts=now.toISOString().slice(0,10);
   var empMes=emps.filter(function(e){return e.dataEmp&&new Date(e.dataEmp+'T00:00:00').getMonth()===mes&&new Date(e.dataEmp+'T00:00:00').getFullYear()===ano;});
   var pagosMes=pagos.filter(function(e){return e.dataPag&&new Date(e.dataPag+'T00:00:00').getMonth()===mes&&new Date(e.dataPag+'T00:00:00').getFullYear()===ano;});
-  var lucMes=pagosMes.reduce(function(s,e){return s+juro(e);},0);
+  var lucMes=pagosMes.reduce(function(s,e){return s+lucroDe(e);},0);
   var fatMes=pagosMes.reduce(function(s,e){return s+totRec(e);},0);
   var empMesTot=empMes.reduce(function(s,e){return s+(e.valor||0);},0);
   var vencem=ativos.filter(function(e){return e.dataVenc===ts;});
@@ -1525,7 +1623,7 @@ function iaResposta(q){
     return '📅 **Vencem HOJE:**'+NL+NL+vencem.map(function(e){return '💰 **'+e.cliente+'** — '+R(totRec(e));}).join(NL)+NL+NL+'Total: **'+R(vencem.reduce(function(s,e){return s+totRec(e);},0))+'**';
   }
   if(tem(['melhor cliente','maior cliente','mais lucro'])){
-    var cm={};emps.forEach(function(e){if(!cm[e.cliente])cm[e.cliente]={v:0,l:0,n:0};cm[e.cliente].v+=(e.valor||0);cm[e.cliente].l+=juro(e);cm[e.cliente].n++;});
+    var cm={};emps.forEach(function(e){if(!cm[e.cliente])cm[e.cliente]={v:0,l:0,n:0};cm[e.cliente].v+=(e.valor||0);cm[e.cliente].l+=lucroDe(e);cm[e.cliente].n++;});
     var top=Object.entries(cm).sort(function(a,b){return b[1].l-a[1].l;}).slice(0,3);
     return '🏆 **Top Clientes:**'+NL+NL+top.map(function(entry,i){var n=entry[0],d=entry[1];return ['🥇','🥈','🥉'][i]+' **'+n+'** — Lucro: '+R(d.l)+' — Total: '+R(d.v);}).join(NL);
   }
@@ -1749,6 +1847,7 @@ function doGoogleLogin(){
 function doLogout(){fbAuth.signOut();}
 
 var tsRef=null;
+var iaKeyRef=null;
 function resetLocalState(){
   emps=[];clis=[];caixa=0;anoHist={};
   DB.set('e_'+curYear,emps);DB.set('clis',clis);DB.sv('caixa',caixa);DB.set('ahist',anoHist);
@@ -1758,12 +1857,19 @@ fbAuth.onAuthStateChanged(function(user){
   var ls=document.getElementById('login-screen');
   var bs=document.getElementById('boot-splash');
   if(tsRef){tsRef.off();tsRef=null;}
+  if(iaKeyRef){iaKeyRef.off();iaKeyRef=null;}
   if(user){
     curUid=user.uid;
     if(ls)ls.style.display='none';
     fbLoadData();
+    iaKeyRef=fbDB.ref('config/iaKey');
+    iaKeyRef.on('value',function(s){
+      IA_OPENAI_KEY=s.val()||'';
+      if(curPage==='ia')renderIA();
+    });
   }else{
     curUid=null;
+    IA_OPENAI_KEY='';
     resetLocalState();
     renderDash();
     if(ls)ls.style.display='flex';
