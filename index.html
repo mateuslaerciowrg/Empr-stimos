@@ -1473,7 +1473,8 @@ function exportRelPDF(){
 
 // ── IA CHAT ───────────────────────────────────
 var ADMIN_EMAIL='lokoporgame194@gmail.com';
-var IA_WORKER_URL='';
+var IA_WORKER_DEFAULT='https://emprestai-ia.emprestai-ia.workers.dev';
+var IA_WORKER_URL=IA_WORKER_DEFAULT;
 var IA_APP_SECRET='';
 var iaHistorico=[];
 var IA_CHIPS=['Quanto emprestei esse mês?','Quem está em atraso?','Qual meu lucro total?','Quanto tenho a receber?','Quem é meu melhor cliente?','Quem vence hoje?','Me dê um resumo geral','Quanto tenho disponível?','Qual minha taxa de recuperação?','Quanto de multa acumulei?'];
@@ -1483,7 +1484,7 @@ function openIaConfig(){
   document.getElementById('iaconf-admin').style.display=admin?'block':'none';
   document.getElementById('iaconf-readonly').style.display=admin?'none':'block';
   if(admin){document.getElementById('iaurlinp').value=IA_WORKER_URL;document.getElementById('iakeyinp').value=IA_APP_SECRET;}
-  else document.getElementById('iaconf-status').textContent=IA_WORKER_URL?'A IA online já está ativa para sua conta.':'A IA online ainda não foi ativada.';
+  else document.getElementById('iaconf-status').textContent=IA_APP_SECRET?'A IA online já está ativa para sua conta.':'A IA online ainda não foi ativada.';
   openModal('m-iaconf');
 }
 function saveIaKey(){
@@ -1508,8 +1509,8 @@ function renderIA(){
   var cobrar=emps.filter(isCobrar);
   var vencem=emps.filter(function(e){return e.status!=='Pago'&&e.dataVenc===now.toISOString().slice(0,10);});
   var sub=document.getElementById('ia-hdr-sub');
-  if(sub)sub.textContent=IA_WORKER_URL?'IA online ativada (OpenAI) ✓':'Pergunte sobre seus empréstimos — funciona offline!';
-  var bv=IA_WORKER_URL?'Olá! 👋 Sou a IA do EmprestAI, com inteligência da OpenAI.\n\nPergunte qualquer coisa sobre seus clientes, empréstimos e finanças!':'Olá! 👋 Sou a IA do EmprestAI.\n\nConheço todos os seus dados e respondo suas perguntas offline!';
+  if(sub)sub.textContent=IA_APP_SECRET?'IA online ativada (OpenAI) ✓':'Pergunte sobre seus empréstimos — funciona offline!';
+  var bv=IA_APP_SECRET?'Olá! 👋 Sou a IA do EmprestAI, com inteligência da OpenAI.\n\nPergunte qualquer coisa sobre seus clientes, empréstimos e finanças!':'Olá! 👋 Sou a IA do EmprestAI.\n\nConheço todos os seus dados e respondo suas perguntas offline!';
   if(cobrar.length)bv+='\n\n🚨 Você tem '+cobrar.length+' empréstimo(s) em atraso!';
   if(vencem.length)bv+='\n\n📅 '+vencem.length+' pagamento(s) vencem hoje!';
   if(!chat.innerHTML)chat.innerHTML=msgHTML('ai',bv);
@@ -1565,7 +1566,7 @@ function sendIA(){
     chat.scrollTop=chat.scrollHeight;
     document.getElementById('ia-btn').disabled=false;
   }
-  if(IA_WORKER_URL){
+  if(IA_APP_SECRET){
     iaRespostaRemota(msg).then(mostrar).catch(function(){
       mostrar(iaResposta(msg.toLowerCase())+'\n\n_(⚠️ IA online indisponível no momento, respondi no modo offline)_');
     });
@@ -1861,13 +1862,13 @@ fbAuth.onAuthStateChanged(function(user){
     iaKeyRef=fbDB.ref('config');
     iaKeyRef.on('value',function(s){
       var d=s.val()||{};
-      IA_WORKER_URL=d.iaWorkerUrl||'';
+      IA_WORKER_URL=d.iaWorkerUrl||IA_WORKER_DEFAULT;
       IA_APP_SECRET=d.iaSecret||'';
       if(curPage==='ia')renderIA();
     });
   }else{
     curUid=null;
-    IA_WORKER_URL='';IA_APP_SECRET='';
+    IA_WORKER_URL=IA_WORKER_DEFAULT;IA_APP_SECRET='';
     resetLocalState();
     renderDash();
     if(ls)ls.style.display='flex';
