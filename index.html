@@ -1803,11 +1803,17 @@ function resetLocalState(){
   emps=[];clis=[];caixa=0;anoHist={};
   DB.set('e_'+curYear,emps);DB.set('clis',clis);DB.sv('caixa',caixa);DB.set('ahist',anoHist);
 }
+function resetIaChat(){
+  var chat=document.getElementById('ia-chat');
+  if(chat)chat.innerHTML='';
+  iaHistorico=[];
+}
 
 fbAuth.onAuthStateChanged(function(user){
   var ls=document.getElementById('login-screen');
   var bs=document.getElementById('boot-splash');
   if(tsRef){tsRef.off();tsRef=null;}
+  resetIaChat();
   if(user){
     curUid=user.uid;
     if(ls)ls.style.display='none';
