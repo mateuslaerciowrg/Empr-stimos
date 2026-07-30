@@ -29,7 +29,7 @@ export default {
     }
 
     const pergunta = (body.pergunta || '').toString().slice(0, 2000);
-    const contexto = (body.contexto || '').toString().slice(0, 14000);
+    const contexto = (body.contexto || '').toString().slice(0, 90000);
     if (!pergunta.trim()) {
       return new Response(JSON.stringify({ error: 'pergunta_vazia' }), { status: 400, headers: corsHeaders() });
     }
@@ -37,8 +37,16 @@ export default {
     const systemPrompt =
       'Você é a IA do EmprestAI Pro, um app de gestão de empréstimos pessoais (crédito informal).\n' +
       'Responda SEMPRE em português do Brasil, direto e objetivo, curto (poucas frases ou uma lista curta).\n' +
-      'Use os dados do CONTEXTO abaixo para responder — eles refletem o sistema no momento exato da pergunta.\n' +
-      'Nunca invente cliente, valor ou empréstimo que não esteja no CONTEXTO. Se a informação não estiver lá, diga que não tem esse dado.\n' +
+      'Use os dados do CONTEXTO abaixo para responder — eles refletem o sistema no momento exato da pergunta, referentes ao ano indicado no campo "ano" do CONTEXTO.\n\n' +
+      'O CONTEXTO tem 4 partes:\n' +
+      '1. "kpis": totais gerais atuais (capital, a receber, lucro total, etc).\n' +
+      '2. "resumo_mensal_do_ano": uma lista com 12 posições (janeiro a dezembro), cada uma já soma os valores daquele mês — "total_emprestado_no_mes" (quanto foi emprestado/desembolsado naquele mês), "faturamento_recebido_no_mes" e "lucro_recebido_no_mes" (o que foi efetivamente recebido de pagamentos feitos naquele mês), "contratos_novos_no_mes" e "contratos_pagos_no_mes".\n' +
+      '3. "clientes": um item por cliente (score, status, dívida em aberto).\n' +
+      '4. "emprestimos": um item por contrato de empréstimo, com todas as datas (emprestado_em, vencimento, pago_em) e valores.\n\n' +
+      'REGRA OBRIGATÓRIA: para QUALQUER pergunta sobre valores agregados de um mês, de um intervalo de meses, ou "desde o início do ano" (ex: "quanto emprestei em maio", "faturamento de março a junho", "lucro do ano até agora"), você DEVE usar exclusivamente os números já somados em "resumo_mensal_do_ano" — pegue o(s) mês(es) pedido(s) pelo campo "mes_num" (1=janeiro...12=dezembro) e some os campos correspondentes. NUNCA tente contar ou somar isso olhando a lista "emprestimos" item por item — é fácil errar contando manualmente, e "resumo_mensal_do_ano" já está calculado corretamente.\n' +
+      'Só use a lista "emprestimos" para perguntas sobre UM contrato ou cliente específico (ex: "quem está atrasado", "detalhe do empréstimo X", "quanto o João me deve").\n' +
+      'Antes de responder um número, confira mentalmente se ele veio do campo certo de "resumo_mensal_do_ano" e do mês certo.\n' +
+      'Nunca invente cliente, valor ou empréstimo que não esteja no CONTEXTO. Se a informação pedida não estiver lá (ex: ano anterior não presente), diga isso claramente em vez de adivinhar.\n' +
       'Use R$ para valores monetários e "**texto**" para destacar números importantes.\n\n' +
       'CONTEXTO ATUAL DO SISTEMA:\n' + contexto;
 
@@ -48,8 +56,8 @@ export default {
         { role: 'system', content: systemPrompt },
         { role: 'user', content: pergunta }
       ],
-      max_tokens: 550,
-      temperature: 0.3
+      max_tokens: 800,
+      temperature: 0
     };
 
     let resp;

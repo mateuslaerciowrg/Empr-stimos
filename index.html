@@ -1457,7 +1457,25 @@ function exportRelPDF(){
 var IA_WORKER_URL='https://emprestai-ia.emprestai-ia.workers.dev';
 var IA_APP_SECRET='senhalaercio';
 var iaHistorico=[];
+var iaSaveTimer=null;
 var IA_CHIPS=['Quanto emprestei esse mês?','Quem está em atraso?','Qual meu lucro total?','Quanto tenho a receber?','Quem é meu melhor cliente?','Quem vence hoje?','Me dê um resumo geral','Quanto tenho disponível?','Qual minha taxa de recuperação?','Quanto de multa acumulei?'];
+function saveIaHistorico(){
+  if(!curUid)return;
+  clearTimeout(iaSaveTimer);
+  iaSaveTimer=setTimeout(function(){
+    fbDB.ref('u/'+curUid+'/iaChat').set(iaHistorico.slice(-100));
+  },1500);
+}
+function carregarIaHistorico(){
+  var myUid=curUid;
+  fbDB.ref('u/'+myUid+'/iaChat').once('value').then(function(s){
+    if(myUid!==curUid)return;
+    var hist=s.val()||[];
+    iaHistorico=hist;
+    var chat=document.getElementById('ia-chat');
+    if(chat&&hist.length)chat.innerHTML=hist.map(function(h){return msgHTML('user',h.q)+msgHTML('ai',h.a);}).join('');
+  });
+}
 function renderIA(){
   var chat=document.getElementById('ia-chat');
   var now=new Date();
@@ -1488,9 +1506,15 @@ function montarContextoIA(){
   var lucTot=pagos.reduce(function(s,e){return s+lucroDe(e);},0);
   var dispon=Math.max(caixa-capRua,0);
   var kpis={capital_total:caixa,capital_na_rua:capRua,disponivel:dispon,a_receber:aRec,lucro_total_recebido:lucTot,em_atraso_qtd:cobrar.length,em_atraso_valor:cobrar.reduce(function(s,e){return s+totRec(e);},0),total_clientes:clis.length,total_contratos:emps.length,contratos_pagos:pagos.length,contratos_ativos:ativos.length};
-  var clientesResumo=clis.slice(0,80).map(function(c){return {nome:c.nome,score:scoreOf(c.nome),status:statusOf(c),divida_aberta:devCliente(c.nome),telefone:c.tel||''};});
-  var empsResumo=emps.slice().sort(function(a,b){return (b.dataEmp||'').localeCompare(a.dataEmp||'');}).slice(0,150).map(function(e){return {id:e.id,cliente:e.cliente,principal:e.valor,juros:jurosDevido(e),multa:multa(e),total:totRec(e),status:e.status,vencimento:e.dataVenc,pago_em:e.dataPag||null,dias_atraso:dLate(e.dataVenc,e.status)};});
-  return JSON.stringify({data_hoje:tod(),kpis:kpis,clientes:clientesResumo,emprestimos:empsResumo});
+  var resumoMensal=[];
+  for(var m=0;m<12;m++){
+    var empMes=emps.filter(function(e){return e.dataEmp&&new Date(e.dataEmp+'T00:00:00').getMonth()===m;});
+    var pagMes=pagos.filter(function(e){return e.dataPag&&new Date(e.dataPag+'T00:00:00').getMonth()===m;});
+    resumoMensal.push({mes:MFL[m],mes_num:m+1,total_emprestado_no_mes:empMes.reduce(function(s,e){return s+(e.valor||0);},0),contratos_novos_no_mes:empMes.length,faturamento_recebido_no_mes:pagMes.reduce(function(s,e){return s+totRec(e);},0),lucro_recebido_no_mes:pagMes.reduce(function(s,e){return s+lucroDe(e);},0),contratos_pagos_no_mes:pagMes.length});
+  }
+  var clientesResumo=clis.slice(0,300).map(function(c){return {nome:c.nome,score:scoreOf(c.nome),status:statusOf(c),divida_aberta:devCliente(c.nome),telefone:c.tel||''};});
+  var empsResumo=emps.slice().sort(function(a,b){return (b.dataEmp||'').localeCompare(a.dataEmp||'');}).slice(0,400).map(function(e){return {id:e.id,cliente:e.cliente,principal:e.valor,juros:jurosDevido(e),multa:multa(e),total:totRec(e),status:e.status,emprestado_em:e.dataEmp||null,vencimento:e.dataVenc,pago_em:e.dataPag||null,dias_atraso:dLate(e.dataVenc,e.status)};});
+  return JSON.stringify({data_hoje:tod(),ano:curYear,kpis:kpis,resumo_mensal_do_ano:resumoMensal,clientes:clientesResumo,emprestimos:empsResumo});
 }
 function iaRespostaRemota(msg){
   return fetch(IA_WORKER_URL,{
@@ -1517,6 +1541,7 @@ function sendIA(){
   function mostrar(resp){
     var typing=document.getElementById('ia-typing');if(typing)typing.remove();
     iaHistorico.push({q:msg,a:resp});
+    saveIaHistorico();
     chat.innerHTML+=msgHTML('ai',resp);
     chat.scrollTop=chat.scrollHeight;
     document.getElementById('ia-btn').disabled=false;
@@ -1818,6 +1843,7 @@ fbAuth.onAuthStateChanged(function(user){
     curUid=user.uid;
     if(ls)ls.style.display='none';
     fbLoadData();
+    carregarIaHistorico();
   }else{
     curUid=null;
     resetLocalState();
