@@ -320,7 +320,7 @@ input[type=file]{display:none;}
 <div class="topbar">
   <div class="logo">
     <div class="logo-icon">💸</div>
-    <div><div class="logo-name">EmprestAI Pro</div><div class="logo-sub" style="display:flex;align-items:center;gap:6px"><span id="topdate">—</span><span style="display:flex;align-items:center;gap:2px;margin-left:2px"><button onclick="event.stopPropagation();switchYear(-1)" style="background:none;border:none;color:var(--t4);font-size:12px;font-weight:900;cursor:pointer;padding:0 3px;font-family:inherit">‹</button><span id="year-lbl" style="font-weight:800;color:var(--g)"></span><button onclick="event.stopPropagation();switchYear(1)" style="background:none;border:none;color:var(--t4);font-size:12px;font-weight:900;cursor:pointer;padding:0 3px;font-family:inherit">›</button></span></div></div>
+    <div><div class="logo-name">EmprestAI Pro</div><div class="logo-sub" style="display:flex;align-items:center;gap:6px"><span id="topdate">—</span><span style="display:flex;align-items:center;gap:2px;margin-left:2px"><button onclick="event.stopPropagation();switchYear(-1)" style="background:none;border:none;color:var(--t4);font-size:12px;font-weight:900;cursor:pointer;padding:0 3px;font-family:inherit">‹</button><span id="year-lbl" style="font-weight:800;color:var(--g)"></span><button onclick="event.stopPropagation();switchYear(1)" style="background:none;border:none;color:var(--t4);font-size:12px;font-weight:900;cursor:pointer;padding:0 3px;font-family:inherit">›</button></span><span id="sync-status" style="margin-left:6px;font-size:10px" title="Status de sincronização"></span></div></div>
   </div>
   <div class="top-btns">
     <div class="ib" id="theme-btn" onclick="toggleTheme()" title="Tema">🌙</div>
@@ -821,6 +821,19 @@ function renderDash(){
   h+='<div class="sec">📅 Próximos 7 Dias</div>';
   if(prox.length)h+=prox.map(lcard).join('');
   else h+='<div class="empty"><div style="font-size:36px">📭</div><div>Nenhum vencimento nos próximos 7 dias</div></div>';
+  var todDia=new Date();todDia.setHours(0,0,0,0);
+  var projBuckets=[{label:'0-30 dias',min:0,max:30,val:0,n:0},{label:'31-60 dias',min:31,max:60,val:0,n:0},{label:'61-90 dias',min:61,max:90,val:0,n:0}];
+  ativos.forEach(function(e){
+    if(!e.dataVenc)return;
+    var dias=Math.round((new Date(e.dataVenc+'T00:00:00')-todDia)/86400000);
+    if(dias<0)return;
+    var b=projBuckets.find(function(b){return dias>=b.min&&dias<=b.max;});
+    if(b){b.val+=totRec(e);b.n++;}
+  });
+  var maxProj=Math.max.apply(null,projBuckets.map(function(b){return b.val;}).concat([1]));
+  h+='<div class="sec">📈 Projeção de Recebíveis</div><div class="card" style="padding:11px">';
+  h+=projBuckets.every(function(b){return b.n===0;})?'<div class="empty"><div style="font-size:36px">📭</div><div>Nenhum vencimento futuro cadastrado</div></div>':projBuckets.map(function(b){return '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:11px;font-weight:700;margin-bottom:3px"><span>'+b.label+' ('+b.n+')</span><span style="color:var(--g)">'+R(b.val)+'</span></div><div class="prog"><div class="prog-f" style="width:'+(maxProj?Math.round(b.val/maxProj*100):0)+'%;background:var(--g)"></div></div></div>';}).join('');
+  h+='</div>';
   document.getElementById('pg-dash').innerHTML=h;
   updateNavBadge();
   // Render month filter chips
@@ -1307,13 +1320,40 @@ function openCliModal(id){
   if(c&&c.res)document.getElementById('resrev').src=c.res;
   openModal('m-cli');
 }
+function validaCPF(cpf){
+  cpf=(cpf||'').replace(/\D/g,'');
+  if(cpf.length!==11||/^(\d)\1{10}$/.test(cpf))return false;
+  var soma=0,resto;
+  for(var i=1;i<=9;i++)soma+=parseInt(cpf.substring(i-1,i))*(11-i);
+  resto=(soma*10)%11;if(resto===10||resto===11)resto=0;
+  if(resto!==parseInt(cpf.substring(9,10)))return false;
+  soma=0;
+  for(i=1;i<=10;i++)soma+=parseInt(cpf.substring(i-1,i))*(12-i);
+  resto=(soma*10)%11;if(resto===10||resto===11)resto=0;
+  if(resto!==parseInt(cpf.substring(10,11)))return false;
+  return true;
+}
+function cpfDuplicado(cpf,idAtual){
+  var limpo=(cpf||'').replace(/\D/g,'');
+  if(!limpo)return null;
+  var achado=clis.find(function(c){return c.id!==idAtual&&(c.doc||'').replace(/\D/g,'')===limpo;});
+  return achado?achado.nome:null;
+}
 function saveCli(){
   var nome=document.getElementById('fcnome').value.trim();if(!nome){toast('⚠️ Informe o nome');return;}
   var id=document.getElementById('fcid').value;
+  var docCpf=document.getElementById('fcdoc').value.trim();
+  if(docCpf&&docCpf.replace(/\D/g,'').length===11&&!validaCPF(docCpf)){
+    toast('⚠️ CPF inválido, confira os números');return;
+  }
+  var dup=cpfDuplicado(docCpf,id);
+  if(dup){
+    toast('⚠️ Este CPF já está cadastrado para: '+dup);return;
+  }
   var old=id?clis.find(function(c){return c.id===id;}):null;
   var stSel=document.getElementById('fcst').value;
   var isAuto=stSel==='__auto__';
-  var obj={id:id||nextCliId(),nome:nome,tel:document.getElementById('fctel').value.replace(/\D/g,''),doc:document.getElementById('fcdoc').value.trim(),nasc:document.getElementById('fcnasc').value,end:document.getElementById('fcend').value.trim(),status:isAuto?(old?old.status:'Novo'):stSel,statusAuto:isAuto,lim:parseFloat(document.getElementById('fclim').value)||0,obs:document.getElementById('fcobs').value.trim(),res:document.getElementById('fcres').value||'',foto:document.getElementById('fc-foto').value||''};
+  var obj={id:id||nextCliId(),nome:nome,tel:document.getElementById('fctel').value.replace(/\D/g,''),doc:docCpf,nasc:document.getElementById('fcnasc').value,end:document.getElementById('fcend').value.trim(),status:isAuto?(old?old.status:'Novo'):stSel,statusAuto:isAuto,lim:parseFloat(document.getElementById('fclim').value)||0,obs:document.getElementById('fcobs').value.trim(),res:document.getElementById('fcres').value||'',foto:document.getElementById('fc-foto').value||''};
   if(id){var i=clis.findIndex(function(c){return c.id===id;});if(i>=0)clis[i]=obj;}
   else clis.push(obj);
   saveClis();closeModal('m-cli');renderCli();toast(id?'✅ Atualizado!':'✅ Cliente cadastrado!');
@@ -1520,6 +1560,16 @@ function renderRel(){
     h+='</div><div style="font-size:9px;color:var(--t4);font-weight:600">'+bkEnt.labels[i]+'</div></div>';
   });
   h+='</div><div style="display:flex;gap:14px;justify-content:center;margin-top:6px;font-size:10px;font-weight:700"><span style="color:var(--g)">● Entrada</span><span style="color:var(--red)">● Saída</span></div></div>';
+  var agingBuckets=[{label:'1-30 dias',min:1,max:30,n:0,val:0},{label:'31-60 dias',min:31,max:60,n:0,val:0},{label:'61-90 dias',min:61,max:90,n:0,val:0},{label:'90+ dias',min:91,max:Infinity,n:0,val:0}];
+  atrasados.forEach(function(e){
+    var d=dLate(e.dataVenc,e.status);
+    var b=agingBuckets.find(function(b){return d>=b.min&&d<=b.max;});
+    if(b){b.n++;b.val+=totRec(e);}
+  });
+  var maxAging=Math.max.apply(null,agingBuckets.map(function(b){return b.val;}).concat([1]));
+  h+='<div class="sec">⏰ Inadimplência por Faixa</div><div class="card" style="padding:11px">';
+  h+=agingBuckets.every(function(b){return b.n===0;})?'<div class="empty"><div style="font-size:36px">✅</div><div>Nenhum contrato em atraso</div></div>':agingBuckets.map(function(b){return '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:11px;font-weight:700;margin-bottom:3px"><span>'+b.label+' ('+b.n+')</span><span style="color:var(--red)">'+R(b.val)+'</span></div><div class="prog"><div class="prog-f" style="width:'+(maxAging?Math.round(b.val/maxAging*100):0)+'%;background:var(--red)"></div></div></div>';}).join('');
+  h+='</div>';
   var cliMap={};
   relFiltrado.forEach(function(e){if(!cliMap[e.cliente])cliMap[e.cliente]={n:0,fat:0,luc:0};cliMap[e.cliente].n++;cliMap[e.cliente].fat+=totRec(e);cliMap[e.cliente].luc+=lucroDe(e);});
   var top=Object.entries(cliMap).sort(function(a,b){return b[1].luc-a[1].luc;}).slice(0,8);
@@ -2084,11 +2134,27 @@ function fbLoadData(){
 function fbSave(){
   if(!curUid)return;
   clearTimeout(syncTimer);
+  setSyncStatus('salvando');
   syncTimer=setTimeout(function(){
     var ts=new Date().toISOString();myLastTs=ts;
-    fbDB.ref('u/'+curUid+'/loans/'+curYear).set(emps);
-    fbDB.ref('u/'+curUid).update({clis:clis,caixa:caixa,_ts:ts});
+    Promise.all([
+      fbDB.ref('u/'+curUid+'/loans/'+curYear).set(emps),
+      fbDB.ref('u/'+curUid).update({clis:clis,caixa:caixa,_ts:ts})
+    ]).then(function(){
+      setSyncStatus('ok');
+    }).catch(function(err){
+      console.error('Erro ao sincronizar:',err);
+      setSyncStatus('erro');
+      toast('🔴 Falha ao salvar na nuvem. Verifique sua internet.',4000);
+    });
   },2000);
+}
+function setSyncStatus(estado){
+  var el=document.getElementById('sync-status');
+  if(!el)return;
+  if(estado==='salvando'){el.textContent='🟡';el.title='Salvando...';el.onclick=null;el.style.cursor='default';}
+  else if(estado==='erro'){el.textContent='🔴';el.title='Falha ao sincronizar, toque para tentar novamente';el.onclick=function(){fbSave();};el.style.cursor='pointer';}
+  else{el.textContent='🟢';el.title='Sincronizado';el.onclick=null;el.style.cursor='default';}
 }
 
 window.addEventListener('error',function(e){
