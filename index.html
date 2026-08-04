@@ -523,6 +523,9 @@ input[type=file]{display:none;}
 <div class="ov" id="m-cobr" onclick="if(event.target.id==='m-cobr')closeModal('m-cobr')">
   <div class="modal"><div class="mbar"></div><div class="mtitle">📱 Cobrança WhatsApp</div><div id="cobr-ct"></div></div>
 </div>
+<div class="ov" id="m-cobr-lote" onclick="if(event.target.id==='m-cobr-lote')closeModal('m-cobr-lote')">
+  <div class="modal"><div class="mbar"></div><div class="mtitle">📱 Cobrança em Lote</div><div id="cobr-lote-ct"></div><button class="btn bsec" style="margin-top:4px" onclick="closeModal('m-cobr-lote')">Fechar</button></div>
+</div>
 <div class="ov" id="m-cli" onclick="if(event.target.id==='m-cli')closeModal('m-cli')">
   <div class="modal">
     <div class="mbar"></div>
@@ -816,7 +819,7 @@ function renderDash(){
   h+='<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--t4);margin-top:2px;font-weight:600"><span>'+pagos.length+' pagos</span><span>'+ativos.length+' pendentes</span></div></div>';
   h+='<div style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.8px;margin:14px 0 6px;display:flex;align-items:center;gap:6px">Filtro de Mes<span style="flex:1;height:1px;background:var(--border);display:inline-block"></span></div>';
   h+='<div id="mes-filter" style="display:flex;gap:5px;overflow-x:auto;scrollbar-width:none;padding-bottom:6px;margin-bottom:4px"></div>';
-  h+='<div class="sec">🚨 Cobrar Agora</div>';
+  h+='<div class="sec">🚨 Cobrar Agora'+(cobrar.length?' <button onclick="abrirCobrancaEmLote()" style="background:rgba(0,230,138,.12);border:1px solid rgba(0,230,138,.3);color:var(--g);font-size:9px;font-weight:700;padding:3px 8px;border-radius:10px;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:normal">📱 Cobrar Todos</button>':'')+'</div>';
   if(cobrar.length){h+=cobrar.slice(0,5).sort(function(a,b){return dLate(b.dataVenc,b.status)-dLate(a.dataVenc,a.status);}).map(lcard).join('');}
   else h+='<div class="empty"><div style="font-size:36px">✅</div><div>Ninguém em atraso!</div></div>';
   h+='<div class="sec">📅 Próximos 7 Dias</div>';
@@ -1290,24 +1293,47 @@ function openCobr(id){
   h+='<button class="btn bsec" onclick="closeModal(\'m-cobr\')">Cancelar</button>';
   document.getElementById('cobr-ct').innerHTML=h;closeModal('m-det');openModal('m-cobr');
 }
+function buildCobrMsg(e,tipo){
+  var d=dLate(e.dataVenc,e.status),mt=multa(e),tot=totRec(e),jur=jurosDevido(e),venc=fD(e.dataVenc);
+  var data=new Date().toLocaleDateString('pt-BR');
+  var empresa='*FaciliteCredit*';
+  if(tipo==='total'){
+    return 'Prezado(a) *'+e.cliente+'*,\n\nA '+empresa+' vem por meio desta mensagem informar que hoje, '+data+', é a data acordada para a regularização do seu compromisso financeiro conosco.\n\n📋 *Contrato:* '+e.id+'\n💰 *Principal:* '+R(e.valor)+'\n📊 *Juros ('+( e.taxa||40)+'%):* '+R(jur)+(mt>0?'\n⚠️ *Multa por Atraso ('+d+' dias):* '+R(mt):'')+'\n\n🎯 *Total a Regularizar: '+R(tot)+'*\n📅 *Vencimento:* '+venc+'\n\nSolicito gentilmente que o pagamento seja efetuado nesta data, conforme acordado.\n\nCaso já tenha realizado o pagamento, por favor nos envie o comprovante.\n\nQualquer dúvida, estamos à disposição.\n\n_Atenciosamente,_\n_'+empresa+'_';
+  }else if(tipo==='juros'){
+    return 'Prezado(a) *'+e.cliente+'*,\n\nA '+empresa+' vem informar que hoje é o dia acordado para a regularização do seu compromisso.\n\n📋 *Contrato:* '+e.id+'\n📅 *Vencimento:* '+venc+'\n\nDisponibilizamos as seguintes opções para sua conveniência:\n\n✅ *Opção 1 — Quitação Total:* '+R(tot)+'\n_(Encerra definitivamente o contrato)_\n\n📊 *Opção 2 — Pagamento dos Juros:* '+R(jur)+'\n_(Renova o acordo por mais 30 dias)_\n\nPor favor nos informe qual opção prefere para que possamos formalizar o acerto.\n\n_Atenciosamente,_\n_'+empresa+'_';
+  }
+  return 'Prezado(a) *'+e.cliente+'*,\n\nEsperamos que esteja bem.\n\nA '+empresa+' passa para lembrá-lo(a) de que o contrato *'+e.id+'* '+(d>0?'encontra-se em aberto há *'+d+' dias*.':'possui vencimento em *'+venc+'*.')+('\n\n💰 *Valor a Regularizar:* '+R(tot))+(d>0?'\n\nSolicitamos a regularização o quanto antes para evitar encargos adicionais.':'\n\nContamos com seu pagamento na data acordada.')+'\n\nEstamos à disposição para qualquer esclarecimento.\n\n_Atenciosamente,_\n_'+empresa+'_';
+}
 function enviarWA(id,tipo){
   var e=emps.find(function(x){return x.id===id;});if(!e)return;
   var cli=clis.find(function(c){return c.nome===e.cliente;})||{};
   if(!cli.tel){toast('⚠️ Telefone não cadastrado');return;}
-  var d=dLate(e.dataVenc,e.status),mt=multa(e),tot=totRec(e),jur=jurosDevido(e),venc=fD(e.dataVenc);
-  var msg='';
-  var data=new Date().toLocaleDateString('pt-BR');
-  var empresa='*FaciliteCredit*';
-  if(tipo==='total'){
-    msg='Prezado(a) *'+e.cliente+'*,\n\nA '+empresa+' vem por meio desta mensagem informar que hoje, '+data+', é a data acordada para a regularização do seu compromisso financeiro conosco.\n\n📋 *Contrato:* '+e.id+'\n💰 *Principal:* '+R(e.valor)+'\n📊 *Juros ('+( e.taxa||40)+'%):* '+R(jur)+(mt>0?'\n⚠️ *Multa por Atraso ('+d+' dias):* '+R(mt):'')+'\n\n🎯 *Total a Regularizar: '+R(tot)+'*\n📅 *Vencimento:* '+venc+'\n\nSolicito gentilmente que o pagamento seja efetuado nesta data, conforme acordado.\n\nCaso já tenha realizado o pagamento, por favor nos envie o comprovante.\n\nQualquer dúvida, estamos à disposição.\n\n_Atenciosamente,_\n_'+empresa+'_';
-  }else if(tipo==='juros'){
-    msg='Prezado(a) *'+e.cliente+'*,\n\nA '+empresa+' vem informar que hoje é o dia acordado para a regularização do seu compromisso.\n\n📋 *Contrato:* '+e.id+'\n📅 *Vencimento:* '+venc+'\n\nDisponibilizamos as seguintes opções para sua conveniência:\n\n✅ *Opção 1 — Quitação Total:* '+R(tot)+'\n_(Encerra definitivamente o contrato)_\n\n📊 *Opção 2 — Pagamento dos Juros:* '+R(jur)+'\n_(Renova o acordo por mais 30 dias)_\n\nPor favor nos informe qual opção prefere para que possamos formalizar o acerto.\n\n_Atenciosamente,_\n_'+empresa+'_';
-  }else{
-    msg='Prezado(a) *'+e.cliente+'*,\n\nEsperamos que esteja bem.\n\nA '+empresa+' passa para lembrá-lo(a) de que o contrato *'+e.id+'* '+(d>0?'encontra-se em aberto há *'+d+' dias*.':'possui vencimento em *'+venc+'*.')+('\n\n💰 *Valor a Regularizar:* '+R(tot))+(d>0?'\n\nSolicitamos a regularização o quanto antes para evitar encargos adicionais.':'\n\nContamos com seu pagamento na data acordada.')+'\n\nEstamos à disposição para qualquer esclarecimento.\n\n_Atenciosamente,_\n_'+empresa+'_';
-  }
   var tel=cli.tel.replace(/\D/g,'');
-  window.open('https://wa.me/55'+tel+'?text='+encodeURIComponent(msg),'_blank');
+  window.open('https://wa.me/55'+tel+'?text='+encodeURIComponent(buildCobrMsg(e,tipo)),'_blank');
   closeModal('m-cobr');toast('📱 WhatsApp aberto!');
+}
+function abrirCobrancaEmLote(){
+  var cobrar=emps.filter(isCobrar).sort(function(a,b){return dLate(b.dataVenc,b.status)-dLate(a.dataVenc,a.status);});
+  var h='';
+  if(!cobrar.length){
+    h='<div class="empty"><div style="font-size:36px">✅</div><div>Ninguém em atraso!</div></div>';
+  }else{
+    h='<div style="font-size:11px;color:var(--t4);margin-bottom:10px">'+cobrar.length+' cliente(s) em atraso. Toque em enviar para abrir o WhatsApp de cada um (cobrança do valor total).</div>';
+    h+=cobrar.map(function(e){
+      var cli=clis.find(function(c){return c.nome===e.cliente;})||{};
+      var d=dLate(e.dataVenc,e.status),tot=totRec(e);
+      return '<div class="card" style="padding:11px;display:flex;gap:9px;align-items:center;margin-bottom:7px"><div class="avatar">'+ini(e.cliente)+'</div><div style="flex:1"><div style="font-size:13px;font-weight:700">'+e.cliente+'</div><div style="font-size:10px;color:var(--t4)">'+d+'d atraso • '+R(tot)+'</div></div>'+(cli.tel?'<button class="btn bwa bsm" style="width:auto;padding:8px 12px" onclick="enviarWALote(\''+e.id+'\',this)">📱 Enviar</button>':'<span style="font-size:9px;color:var(--t4)">sem telefone</span>')+'</div>';
+    }).join('');
+  }
+  document.getElementById('cobr-lote-ct').innerHTML=h;openModal('m-cobr-lote');
+}
+function enviarWALote(id,btnEl){
+  var e=emps.find(function(x){return x.id===id;});if(!e)return;
+  var cli=clis.find(function(c){return c.nome===e.cliente;})||{};
+  if(!cli.tel){toast('⚠️ Telefone não cadastrado');return;}
+  var tel=cli.tel.replace(/\D/g,'');
+  window.open('https://wa.me/55'+tel+'?text='+encodeURIComponent(buildCobrMsg(e,'total')),'_blank');
+  if(btnEl){btnEl.textContent='✅ Enviado';btnEl.disabled=true;btnEl.style.opacity='.6';}
 }
 
 // ── CLIENTES ──────────────────────────────────
