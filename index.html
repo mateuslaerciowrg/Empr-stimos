@@ -282,6 +282,7 @@ input[type=file]{display:none;}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="vendor/jspdf.umd.min.js"></script>
 </head>
 <body>
 <!-- BOOT SPLASH (evita piscar a tela de login enquanto o Firebase confirma a sessão) -->
@@ -991,6 +992,8 @@ function openDet(id){
   if(e.status!=='Pago')h+='<button class="btn bg bsm" onclick="openPag(\''+e.id+'\')">✅ Pagar</button>';
   if(e.status!=='Pago')h+='<button class="btn bsm" style="background:rgba(255,214,0,.1);color:var(--gold);border:1px solid rgba(255,214,0,.25)" onclick="closeModal(\'m-det\');openReneg(\''+e.id+'\')">🔄 Reneg.</button>';
   if(cli.tel&&e.status!=='Pago')h+='<button class="btn bwa bsm" onclick="openCobr(\''+e.id+'\')">📱 WA</button>';
+  h+='<button class="btn bsec bsm" onclick="gerarContratoPDF(\''+e.id+'\')">📄 Contrato</button>';
+  if(e.status==='Pago')h+='<button class="btn bsec bsm" onclick="gerarReciboPDF(\''+e.id+'\')">🧾 Recibo</button>';
   h+='<button class="btn bsec bsm" onclick="closeModal(\'m-det\');openEmpModal(\''+e.id+'\')">✏️</button>';
   h+='<button class="btn bred bsm" onclick="closeModal(\'m-det\');delEmp(\''+e.id+'\')">🗑️</button></div>';
   h+='<button class="btn bsec" onclick="closeModal(\'m-det\')">Fechar</button>';
@@ -1001,6 +1004,69 @@ function delEmp(id){
     emps=emps.filter(function(e){return e.id!==id;});saveEmps();
     renderDash();renderEmp();renderCli();toast('🗑️ Excluído');
   },'🗑️ Excluir');
+}
+function gerarContratoPDF(id){
+  if(!window.jspdf){toast('⚠️ Biblioteca de PDF não carregou, tente novamente');return;}
+  var e=emps.find(function(x){return x.id===id;});if(!e)return;
+  var cli=clis.find(function(c){return c.nome===e.cliente;})||{};
+  var doc=new window.jspdf.jsPDF();
+  var pw=doc.internal.pageSize.getWidth();
+  var y=20;
+  doc.setFontSize(16);doc.setFont(undefined,'bold');doc.text('Contrato de Empréstimo Pessoal',pw/2,y,{align:'center'});y+=12;
+  doc.setFontSize(10);doc.setFont(undefined,'normal');
+  doc.text('Contrato nº: '+e.id,14,y);y+=6;
+  doc.text('Data: '+fD(e.dataEmp||tod()),14,y);y+=10;
+  doc.setFont(undefined,'bold');doc.text('Partes',14,y);y+=6;
+  doc.setFont(undefined,'normal');
+  doc.text('Devedor: '+e.cliente+(cli.doc?'  •  CPF/Doc: '+cli.doc:''),14,y);y+=6;
+  if(cli.tel){doc.text('Telefone: '+cli.tel,14,y);y+=6;}
+  if(cli.end){doc.text('Endereço: '+cli.end,14,y);y+=6;}
+  y+=4;
+  doc.setFont(undefined,'bold');doc.text('Condições do Empréstimo',14,y);y+=6;
+  doc.setFont(undefined,'normal');
+  [
+    ['Valor principal:',R(e.valor||0)],
+    ['Taxa de juros:',(e.taxa||40)+'%'],
+    ['Juros:',R(jurosDevido(e))],
+    ['Valor total a pagar:',R(totRec(e))],
+    ['Data de vencimento:',fD(e.dataVenc)],
+    ['Parcela:',e.parc||'1/1']
+  ].forEach(function(l){doc.text(l[0],14,y);doc.text(l[1],80,y);y+=6;});
+  y+=10;
+  doc.text('Declaro estar de acordo com os termos acima descritos, comprometendo-me a efetuar o pagamento na forma e prazo estabelecidos.',14,y,{maxWidth:pw-28});
+  y+=26;
+  doc.line(14,y,90,y);doc.text('Credor',14,y+5);
+  doc.line(110,y,186,y);doc.text('Devedor',110,y+5);
+  doc.save('contrato-'+e.id+'.pdf');
+}
+function gerarReciboPDF(id){
+  if(!window.jspdf){toast('⚠️ Biblioteca de PDF não carregou, tente novamente');return;}
+  var e=emps.find(function(x){return x.id===id;});if(!e)return;
+  if(e.status!=='Pago'){toast('⚠️ Este empréstimo ainda não foi pago');return;}
+  var cli=clis.find(function(c){return c.nome===e.cliente;})||{};
+  var doc=new window.jspdf.jsPDF();
+  var pw=doc.internal.pageSize.getWidth();
+  var y=20;
+  doc.setFontSize(16);doc.setFont(undefined,'bold');doc.text('Recibo de Pagamento',pw/2,y,{align:'center'});y+=12;
+  doc.setFontSize(10);doc.setFont(undefined,'normal');
+  doc.text('Recibo referente ao contrato nº: '+e.id,14,y);y+=6;
+  doc.text('Data do pagamento: '+fD(e.dataPag||tod()),14,y);y+=10;
+  doc.setFont(undefined,'bold');doc.text('Pagador',14,y);y+=6;
+  doc.setFont(undefined,'normal');
+  doc.text(e.cliente+(cli.doc?'  •  CPF/Doc: '+cli.doc:''),14,y);y+=10;
+  doc.setFont(undefined,'bold');doc.text('Valores',14,y);y+=6;
+  doc.setFont(undefined,'normal');
+  [
+    ['Valor principal:',R(e.valor||0)],
+    ['Juros:',R(jurosDevido(e))],
+    ['Multa:',R(e.multaPaga||0)],
+    ['Valor total recebido:',R(totRec(e))]
+  ].forEach(function(l){doc.text(l[0],14,y);doc.text(l[1],80,y);y+=6;});
+  y+=16;
+  doc.text('Declaro ter recebido o valor acima descrito, referente à quitação do empréstimo identificado, dando plena e total quitação.',14,y,{maxWidth:pw-28});
+  y+=26;
+  doc.line(14,y,90,y);doc.text('Assinatura do Credor',14,y+5);
+  doc.save('recibo-'+e.id+'.pdf');
 }
 
 // ── FORM EMPRÉSTIMO ───────────────────────────
@@ -1528,7 +1594,7 @@ function relFiltroBar(){
   h+='</div>';
   return h;
 }
-function renderRel(){
+function computeRelData(){
   var period=getRelPool(curRelPeriod),relPool=period.list,pIni=period.ini,pFim=period.fim,isAno=period.isAno;
   var pagos=isAno?relPool.filter(function(e){return e.status==='Pago';}):relPool.filter(function(e){return e.status==='Pago'&&inPeriodo(e.dataPag,pIni,pFim);});
   var ativos=isAno?relPool.filter(function(e){return e.status!=='Pago';}):relPool.filter(function(e){return e.status!=='Pago'&&inPeriodo(e.dataEmp,pIni,pFim);});
@@ -1537,6 +1603,20 @@ function renderRel(){
   var relFiltrado=isAno?relPool:relPool.filter(function(e){return inPeriodo(e.dataEmp,pIni,pFim)||(e.dataPag&&inPeriodo(e.dataPag,pIni,pFim));});
   var lucTot=pagos.reduce(function(s,e){return s+lucroDe(e);},0);
   var fatTot=pagos.reduce(function(s,e){return s+totRec(e);},0);
+  var agingBuckets=[{label:'1-30 dias',min:1,max:30,n:0,val:0},{label:'31-60 dias',min:31,max:60,n:0,val:0},{label:'61-90 dias',min:61,max:90,n:0,val:0},{label:'90+ dias',min:91,max:Infinity,n:0,val:0}];
+  atrasados.forEach(function(e){
+    var d=dLate(e.dataVenc,e.status);
+    var b=agingBuckets.find(function(b){return d>=b.min&&d<=b.max;});
+    if(b){b.n++;b.val+=totRec(e);}
+  });
+  var cliMap={};
+  relFiltrado.forEach(function(e){if(!cliMap[e.cliente])cliMap[e.cliente]={n:0,fat:0,luc:0};cliMap[e.cliente].n++;cliMap[e.cliente].fat+=totRec(e);cliMap[e.cliente].luc+=lucroDe(e);});
+  var top=Object.entries(cliMap).sort(function(a,b){return b[1].luc-a[1].luc;}).slice(0,8);
+  return {relPool:relPool,pIni:pIni,pFim:pFim,isAno:isAno,pagos:pagos,ativos:ativos,atrasados:atrasados,totalContratos:totalContratos,relFiltrado:relFiltrado,lucTot:lucTot,fatTot:fatTot,agingBuckets:agingBuckets,top:top};
+}
+function renderRel(){
+  var rd=computeRelData();
+  var relPool=rd.relPool,pIni=rd.pIni,pFim=rd.pFim,pagos=rd.pagos,ativos=rd.ativos,atrasados=rd.atrasados,totalContratos=rd.totalContratos,relFiltrado=rd.relFiltrado,lucTot=rd.lucTot,fatTot=rd.fatTot,agingBuckets=rd.agingBuckets,top=rd.top;
   var bkLuc=bucketizePeriodo(pIni,pFim);
   pagos.forEach(function(e){bucketAdd(bkLuc,e.dataPag,lucroDe(e));});
   var maxLuc=Math.max.apply(null,bkLuc.buckets.concat([1]));
@@ -1560,53 +1640,102 @@ function renderRel(){
     h+='</div><div style="font-size:9px;color:var(--t4);font-weight:600">'+bkEnt.labels[i]+'</div></div>';
   });
   h+='</div><div style="display:flex;gap:14px;justify-content:center;margin-top:6px;font-size:10px;font-weight:700"><span style="color:var(--g)">● Entrada</span><span style="color:var(--red)">● Saída</span></div></div>';
-  var agingBuckets=[{label:'1-30 dias',min:1,max:30,n:0,val:0},{label:'31-60 dias',min:31,max:60,n:0,val:0},{label:'61-90 dias',min:61,max:90,n:0,val:0},{label:'90+ dias',min:91,max:Infinity,n:0,val:0}];
-  atrasados.forEach(function(e){
-    var d=dLate(e.dataVenc,e.status);
-    var b=agingBuckets.find(function(b){return d>=b.min&&d<=b.max;});
-    if(b){b.n++;b.val+=totRec(e);}
-  });
   var maxAging=Math.max.apply(null,agingBuckets.map(function(b){return b.val;}).concat([1]));
   h+='<div class="sec">⏰ Inadimplência por Faixa</div><div class="card" style="padding:11px">';
   h+=agingBuckets.every(function(b){return b.n===0;})?'<div class="empty"><div style="font-size:36px">✅</div><div>Nenhum contrato em atraso</div></div>':agingBuckets.map(function(b){return '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:11px;font-weight:700;margin-bottom:3px"><span>'+b.label+' ('+b.n+')</span><span style="color:var(--red)">'+R(b.val)+'</span></div><div class="prog"><div class="prog-f" style="width:'+(maxAging?Math.round(b.val/maxAging*100):0)+'%;background:var(--red)"></div></div></div>';}).join('');
   h+='</div>';
-  var cliMap={};
-  relFiltrado.forEach(function(e){if(!cliMap[e.cliente])cliMap[e.cliente]={n:0,fat:0,luc:0};cliMap[e.cliente].n++;cliMap[e.cliente].fat+=totRec(e);cliMap[e.cliente].luc+=lucroDe(e);});
-  var top=Object.entries(cliMap).sort(function(a,b){return b[1].luc-a[1].luc;}).slice(0,8);
   h+='<div class="sec">Top Clientes por Lucro</div>';
   h+=top.length?top.map(function(entry,i){var n=entry[0],d=entry[1];return '<div class="card" style="padding:11px;display:flex;gap:9px;align-items:center;margin-bottom:7px"><div style="font-size:16px;font-weight:900;color:var(--t4);width:18px">#'+(i+1)+'</div><div class="avatar">'+ini(n)+'</div><div style="flex:1"><div style="font-size:13px;font-weight:700">'+n+'</div><div style="font-size:10px;color:var(--t4)">'+d.n+' emp. • Lucro '+R(d.luc)+'</div></div><div style="text-align:right"><div style="font-size:13px;font-weight:900;color:var(--g)">'+R(d.fat)+'</div><div style="font-size:9px;color:var(--t4)">total</div></div></div>';}).join(''):'<div class="empty"><div style="font-size:36px">📭</div><div>Nenhum movimento neste período</div></div>';
   h+=buildRelDetail(relFiltrado);
   document.getElementById('pg-rel').innerHTML=h;
 }
-function buildRelDetail(relFiltrado){
+function buildRelClienteRows(relFiltrado){
   var lista=relFiltrado||emps;
   var nomesSet=lista.map(function(e){return e.cliente;});
   var nomes=nomesSet.filter(function(n,i){return nomesSet.indexOf(n)===i;});
-  var d='<div id="rel-detail"><div class="sec">Detalhamento por Cliente</div>';
-  if(!nomes.length)d+='<div class="empty"><div style="font-size:36px">📭</div><div>Nenhum cliente neste período</div></div>';
-  nomes.forEach(function(nome){
+  return nomes.map(function(nome){
     var c=clis.find(function(x){return x.nome===nome;});
     var es=lista.filter(function(e){return e.cliente===nome;}).sort(function(a,b){return (a.dataEmp||'').localeCompare(b.dataEmp||'');});
-    if(!es.length)return;
-    var score=scoreOf(nome),status=c?statusOf(c):'Novo';
-    var emprestado=es.reduce(function(s,e){return s+(e.valor||0);},0);
-    var recebido=es.filter(function(e){return e.status==='Pago';}).reduce(function(s,e){return s+totRec(e);},0);
-    var pendente=es.filter(function(e){return e.status!=='Pago';}).reduce(function(s,e){return s+totRec(e);},0);
-    d+='<details open class="rd-cli"><summary style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;cursor:pointer"><b style="font-size:13px">'+nome+'</b><span style="font-size:11px">Score '+score+' · '+status+'</span></summary>';
+    return {nome:nome,score:scoreOf(nome),status:c?statusOf(c):'Novo',loans:es,emprestado:es.reduce(function(s,e){return s+(e.valor||0);},0),recebido:es.filter(function(e){return e.status==='Pago';}).reduce(function(s,e){return s+totRec(e);},0),pendente:es.filter(function(e){return e.status!=='Pago';}).reduce(function(s,e){return s+totRec(e);},0)};
+  }).filter(function(r){return r.loans.length;});
+}
+function buildRelDetail(relFiltrado){
+  var rows=buildRelClienteRows(relFiltrado);
+  var d='<div id="rel-detail"><div class="sec">Detalhamento por Cliente</div>';
+  if(!rows.length)d+='<div class="empty"><div style="font-size:36px">📭</div><div>Nenhum cliente neste período</div></div>';
+  rows.forEach(function(r){
+    d+='<details open class="rd-cli"><summary style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;cursor:pointer"><b style="font-size:13px">'+r.nome+'</b><span style="font-size:11px">Score '+r.score+' · '+r.status+'</span></summary>';
     d+='<table class="rd-tbl"><thead><tr><th>ID</th><th>Parcela</th><th>Valor</th><th>Total</th><th>Vencimento</th><th>Status</th><th>Pago em</th></tr></thead><tbody>';
-    es.forEach(function(e){
+    r.loans.forEach(function(e){
       d+='<tr><td>'+e.id+'</td><td>'+(e.parc||'1/1')+'</td><td>'+R(e.valor||0)+'</td><td>'+R(totRec(e))+'</td><td>'+(e.dataVenc||'—')+'</td><td>'+statusEfetivo(e).status+'</td><td>'+(e.dataPag||'—')+'</td></tr>';
     });
     d+='</tbody></table>';
-    d+='<div style="display:flex;gap:14px;font-size:11px;font-weight:700;margin-top:4px"><span>Emprestado: '+R(emprestado)+'</span><span>Recebido: '+R(recebido)+'</span><span>Pendente: '+R(pendente)+'</span></div>';
+    d+='<div style="display:flex;gap:14px;font-size:11px;font-weight:700;margin-top:4px"><span>Emprestado: '+R(r.emprestado)+'</span><span>Recebido: '+R(r.recebido)+'</span><span>Pendente: '+R(r.pendente)+'</span></div>';
     d+='</details>';
   });
   d+='</div>';
   return d;
 }
 function exportRelPDF(){
-  if(curPage!=='rel'){showPg('rel',document.querySelectorAll('.nav .nb')[4]);}
-  setTimeout(function(){window.print();},150);
+  if(!window.jspdf){toast('⚠️ Biblioteca de PDF não carregou, tente novamente');return;}
+  var rd=computeRelData();
+  var rows=buildRelClienteRows(rd.relFiltrado);
+  var doc=new window.jspdf.jsPDF();
+  var ph=doc.internal.pageSize.getHeight();
+  var y=18;
+  function chk(need){if(y+need>ph-14){doc.addPage();y=18;}}
+  doc.setFontSize(16);doc.setFont(undefined,'bold');doc.text('EmprestAI Pro — Relatório',14,y);y+=8;
+  doc.setFontSize(9);doc.setFont(undefined,'normal');doc.setTextColor(100);
+  var periodoTxt=rd.isAno?('Ano '+curYear):(rd.pIni+' a '+rd.pFim);
+  doc.text('Período: '+periodoTxt+'  •  Gerado em '+new Date().toLocaleString('pt-BR'),14,y);y+=9;
+  doc.setTextColor(0);
+  doc.setFontSize(11);doc.setFont(undefined,'bold');doc.text('Resumo',14,y);y+=6;
+  doc.setFontSize(9);doc.setFont(undefined,'normal');
+  [
+    ['Faturamento:',R(rd.fatTot)+' ('+rd.pagos.length+' pagos)'],
+    ['Lucro:',R(rd.lucTot)],
+    ['Contratos:',String(rd.totalContratos)+' ('+rd.ativos.length+' ativos)'],
+    ['Inadimplência:',(rd.totalContratos?Math.round(rd.atrasados.length/rd.totalContratos*100):0)+'% ('+rd.atrasados.length+' em atraso)']
+  ].forEach(function(l){chk(6);doc.text(l[0],14,y);doc.text(l[1],60,y);y+=6;});
+  y+=4;
+  chk(10);doc.setFontSize(11);doc.setFont(undefined,'bold');doc.text('Inadimplência por Faixa',14,y);y+=6;
+  doc.setFontSize(9);doc.setFont(undefined,'normal');
+  if(rd.agingBuckets.every(function(b){return b.n===0;})){chk(6);doc.text('Nenhum contrato em atraso',14,y);y+=6;}
+  else rd.agingBuckets.forEach(function(b){chk(6);doc.text(b.label+' ('+b.n+'):',14,y);doc.text(R(b.val),60,y);y+=6;});
+  y+=4;
+  chk(10);doc.setFontSize(11);doc.setFont(undefined,'bold');doc.text('Top Clientes por Lucro',14,y);y+=6;
+  doc.setFontSize(9);doc.setFont(undefined,'normal');
+  if(!rd.top.length){chk(6);doc.text('Nenhum movimento neste período',14,y);y+=6;}
+  else rd.top.forEach(function(entry,i){var n=entry[0],d=entry[1];chk(6);doc.text((i+1)+'. '+n+' — '+d.n+' emp.',14,y);doc.text('Lucro '+R(d.luc),140,y);y+=6;});
+  y+=6;
+  chk(10);doc.setFontSize(12);doc.setFont(undefined,'bold');doc.text('Detalhamento por Cliente',14,y);y+=7;
+  if(!rows.length){doc.setFontSize(9);doc.setFont(undefined,'normal');chk(6);doc.text('Nenhum cliente neste período',14,y);y+=6;}
+  rows.forEach(function(r){
+    chk(12);
+    doc.setFontSize(10);doc.setFont(undefined,'bold');doc.text(r.nome+' — Score '+r.score+' · '+r.status,14,y);y+=5.5;
+    var cols=[['ID',14],['Parc.',30],['Valor',48],['Total',68],['Vencto',90],['Status',115],['Pago em',140]];
+    doc.setFontSize(8);doc.setFont(undefined,'bold');
+    chk(5);cols.forEach(function(c){doc.text(c[0],c[1],y);});y+=4.5;
+    doc.setFont(undefined,'normal');
+    r.loans.forEach(function(e){
+      chk(5);
+      var se=statusEfetivo(e);
+      doc.text(String(e.id),14,y);
+      doc.text(String(e.parc||'1/1'),30,y);
+      doc.text(R(e.valor||0),48,y);
+      doc.text(R(totRec(e)),68,y);
+      doc.text(e.dataVenc||'—',90,y);
+      doc.text(se.status,115,y);
+      doc.text(e.dataPag||'—',140,y);
+      y+=4.5;
+    });
+    y+=1.5;
+    chk(6);doc.setFontSize(8);doc.setFont(undefined,'bold');
+    doc.text('Emprestado: '+R(r.emprestado)+'   Recebido: '+R(r.recebido)+'   Pendente: '+R(r.pendente),14,y);
+    y+=8;
+  });
+  var fname='relatorio-emprestai-'+(rd.isAno?curYear:(rd.pIni+'_a_'+rd.pFim))+'.pdf';
+  doc.save(fname);
 }
 function csvEscape(v){v=String(v==null?'':v);return /[",\n;]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
 function baixarCSV(nome,linhas){

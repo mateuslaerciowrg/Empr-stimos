@@ -6,7 +6,8 @@ const SHELL = [
   './',
   './index.html',
   './manifest.json',
-  './icon.svg'
+  './icon.svg',
+  './vendor/jspdf.umd.min.js'
 ];
 
 self.addEventListener('install', (e) => {
