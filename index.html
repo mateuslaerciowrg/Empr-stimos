@@ -578,7 +578,7 @@ input[type=file]{display:none;}
     <div class="mbar"></div>
     <div class="mtitle">🏦 Capital Total</div>
     <div class="mcard" id="caixa-info"></div>
-    <p style="font-size:12px;color:var(--t4);margin-bottom:11px;line-height:1.5">O capital cresce sozinho a cada empréstimo novo. Use este campo só pra corrigir o valor manualmente (ex: reconciliar com o caixa real).</p>
+    <p style="font-size:12px;color:var(--t4);margin-bottom:11px;line-height:1.5">O capital diminui quando você empresta e volta quando o cliente paga. Use este campo só pra corrigir o valor manualmente (ex: reconciliar com o caixa real).</p>
     <div class="fg"><label class="fl">Capital Total (R$)</label><input class="fi" id="caixainp" type="number" placeholder="Ex: 10000" inputmode="decimal" style="font-size:22px;text-align:center;font-weight:900" oninput="prevCaixa()"></div>
     <button class="btn bg" onclick="saveCaixa()">Salvar</button>
     <button class="btn bsec" onclick="closeModal('m-caixa')" style="margin-top:7px">Cancelar</button>
@@ -673,6 +673,7 @@ function juro(e){
   return v*t/100;
 }
 function jurosDevido(e){return e.jrEmbed!=null?e.jrEmbed:juro(e);}
+function taxaEfetiva(e){return e.jrEmbed!=null&&e.valor?Math.round(e.jrEmbed/e.valor*100):(e.taxa||40);}
 function multa(e){if(e.status==='Pago')return e.multaPaga||0;var d=dLate(e.dataVenc,e.status);return d>0?d*40:0;}
 function totRec(e){return (e.valor||0)+jurosDevido(e)+multa(e);}
 function lucroDe(e){return e.lucro!=null?e.lucro:jurosDevido(e)+multa(e);}
@@ -802,7 +803,7 @@ function renderDash(){
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">';
   h+='<div><div style="font-size:10px;font-weight:700;color:var(--t4);text-transform:uppercase;letter-spacing:.4px">💵 Disponível para Emprestar</div>';
   h+='<div style="font-size:26px;font-weight:900;color:var(--g);margin-top:3px">'+R(dispon)+'</div>';
-  h+='<div style="font-size:10px;color:var(--t4);margin-top:1px">Capital cresce a cada empréstimo ✓</div></div>';
+  h+='<div style="font-size:10px;color:var(--t4);margin-top:1px">Reduz ao emprestar, volta ao receber</div></div>';
   h+='<div style="text-align:right"><div style="font-size:10px;color:var(--t4)">Capital Total</div><div style="font-size:15px;font-weight:900;color:var(--gold)">'+R(caixa)+'</div>';
   h+='<div style="font-size:10px;color:var(--t4);margin-top:4px">Na Rua</div><div style="font-size:15px;font-weight:900;color:var(--red)">'+R(capRua)+'</div></div></div>';
   h+='<div class="prog"><div class="prog-f" style="background:var(--gold);width:'+comp.toFixed(0)+'%"></div></div>';
@@ -875,7 +876,7 @@ function lcard(e){
   h+='</div></div></div>';
   h+='<div class="lgrid">';
   h+='<div class="lb"><div class="lb-l">Principal</div><div class="lb-v">'+R(e.valor)+'</div></div>';
-  h+='<div class="lb"><div class="lb-l">Juros '+( e.taxa||40)+'%</div><div class="lb-v go">'+R(jurosDevido(e))+'</div></div>';
+  h+='<div class="lb"><div class="lb-l">Juros '+taxaEfetiva(e)+'%</div><div class="lb-v go">'+R(jurosDevido(e))+'</div></div>';
   h+='<div class="lb"><div class="lb-l">Vence</div><div class="lb-v'+(d>0&&e.status!=='Pago'?' r':'')+'">'+fD(e.dataVenc)+'</div></div>';
   h+='</div>';
   if(e.obs)h+='<div style="font-size:10px;color:var(--t4);">📝 '+e.obs+'</div>';
@@ -975,7 +976,7 @@ function openDet(id){
   h+='<div class="mcard" style="background:rgba(0,230,118,.06);border-color:rgba(0,230,118,.15);">';
   h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;text-align:center">';
   h+='<div><div style="font-size:9px;color:var(--t4)">PRINCIPAL</div><div style="font-size:15px;font-weight:900">'+R(e.valor)+'</div></div>';
-  h+='<div><div style="font-size:9px;color:var(--t4)">JUROS '+( e.taxa||40)+'%</div><div style="font-size:15px;font-weight:900;color:var(--gold)">'+R(jurosDevido(e))+'</div></div>';
+  h+='<div><div style="font-size:9px;color:var(--t4)">JUROS '+taxaEfetiva(e)+'%</div><div style="font-size:15px;font-weight:900;color:var(--gold)">'+R(jurosDevido(e))+'</div></div>';
   h+='<div><div style="font-size:9px;color:var(--t4)">TOTAL</div><div style="font-size:15px;font-weight:900;color:var(--g)">'+R(totRec(e))+'</div></div>';
   h+='</div></div>';
   h+='<div class="mcard"><div class="dr"><span class="dk">ID</span><span class="dv" style="color:var(--g)">'+e.id+'</span></div>';
@@ -1135,28 +1136,43 @@ function saveEmp(){
   var val=parseFloat(document.getElementById('fval').value);
   if(!cli){toast('⚠️ Informe o cliente');return;}
   if(!val||val<=0){toast('⚠️ Valor inválido');return;}
-  var id=document.getElementById('fid').value;
-  var st=document.getElementById('fstatus').value;
-  var np=parseInt(document.getElementById('fnparc').value)||1;
-  var obj={
-    id:id||nextEmpId(),cliente:cli,valor:val,
-    taxa:parseFloat(document.getElementById('ftaxa').value)||40,
-    nparc:np,jtipo:document.getElementById('fjtipo').value||'total',
-    dataEmp:document.getElementById('fdemp').value||tod(),
-    dataVenc:document.getElementById('fdvenc').value||'',
-    parc:document.getElementById('fparc').value||'1/'+np,
-    status:st,obs:document.getElementById('fobs').value.trim(),
-    comp:document.getElementById('fcomp').value||'',
-    dataPag:st==='Pago'?tod():''
-  };
-  if(!clis.find(function(c){return c.nome===cli;})){
-    clis.push({id:nextCliId(),nome:cli,tel:'',doc:'',nasc:'',end:'',status:'Novo',statusAuto:true,lim:0,obs:'',res:''});
-    saveClis();
+  try{
+    var id=document.getElementById('fid').value;
+    var st=document.getElementById('fstatus').value;
+    var np=parseInt(document.getElementById('fnparc').value)||1;
+    var obj={
+      id:id||nextEmpId(),cliente:cli,valor:val,
+      taxa:parseFloat(document.getElementById('ftaxa').value)||40,
+      nparc:np,jtipo:document.getElementById('fjtipo').value||'total',
+      dataEmp:document.getElementById('fdemp').value||tod(),
+      dataVenc:document.getElementById('fdvenc').value||'',
+      parc:document.getElementById('fparc').value||'1/'+np,
+      status:st,obs:document.getElementById('fobs').value.trim(),
+      comp:document.getElementById('fcomp').value||'',
+      dataPag:st==='Pago'?tod():''
+    };
+    if(!clis.find(function(c){return c.nome===cli;})){
+      clis.push({id:nextCliId(),nome:cli,tel:'',doc:'',nasc:'',end:'',status:'Novo',statusAuto:true,lim:0,obs:'',res:''});
+      saveClis();
+    }
+    if(id){
+      var i=emps.findIndex(function(e){return e.id===id;});if(i>=0)emps[i]=obj;
+    }else if(np>1){
+      var jTotal=juro(obj);
+      var princPer=val/np,profitPer=jTotal/np;
+      var baseVenc=obj.dataVenc||addDays(obj.dataEmp,30);
+      for(var p=1;p<=np;p++){
+        emps.push(Object.assign({},obj,{id:p===1?obj.id:nextEmpId(),valor:princPer,jrEmbed:profitPer,taxa:0,dataVenc:addDays(baseVenc,(p-1)*30),parc:p+'/'+np}));
+      }
+    }else{
+      emps.push(obj);
+    }
+    saveEmps();closeModal('m-emp');renderDash();renderEmp();renderCli();
+    toast(id?'✅ Atualizado!':(np>1?'✅ Parcelado em '+np+'x!':'✅ '+obj.id+' salvo!'));
+  }catch(err){
+    console.error('Erro em saveEmp:',err);
+    toast('⚠️ Erro ao salvar: '+(err&&err.message||err));
   }
-  if(id){var i=emps.findIndex(function(e){return e.id===id;});if(i>=0)emps[i]=obj;}
-  else{emps.push(obj);caixa+=val;DB.sv('caixa',caixa);}
-  saveEmps();closeModal('m-emp');renderDash();renderEmp();renderCli();
-  toast(id?'✅ Atualizado!':'✅ '+obj.id+' salvo!');
 }
 
 // ── PAGAMENTO ─────────────────────────────────
@@ -1194,27 +1210,32 @@ function calcPag(){
   }else{res.style.display='none';}
 }
 function confirmPag(){
-  var id=document.getElementById('pagid').value;
-  var i=emps.findIndex(function(e){return e.id===id;});if(i<0)return;
-  var e=emps[i];
-  var tipo=document.getElementById('pagtipo').value;
-  var comp=document.getElementById('pagcomp').value;
-  if(tipo==='total'){
-    emps[i]=Object.assign({},e,pagoFinal(e),{comp:comp||e.comp});
-    toast('✅ Pago TOTAL!');
-  }else if(tipo==='juros'){
-    var jv=jurosDevido(e);
-    var jRec={id:nextEmpId(),cliente:e.cliente,valor:jv,lucro:jv,taxa:0,nparc:1,jtipo:'total',dataEmp:tod(),dataVenc:tod(),parc:'Juros '+e.id,status:'Pago',dataPag:tod(),obs:'Juros de '+e.id,comp:comp,origem:'reneg'};
-    emps.push(jRec);
-    emps[i]=Object.assign({},e,{dataVenc:addDays(e.dataVenc,30),status:'Pendente'},e.jrEmbed!=null?{jrEmbed:0}:{});
-    toast('✅ Juros recebidos! Renovado +30 dias.');
-  }else{
-    var pago=parseFloat(document.getElementById('pagval').value)||0;
-    var novo=aplicarParcial(e,pago);
-    if(novo.status==='Pago'){emps[i]=Object.assign({},novo,{comp:comp||e.comp});toast('✅ Pago total!');}
-    else{emps[i]=Object.assign({},novo,{obs:'Parcial '+R(pago)+'. '+(e.obs||'')});toast('✅ Parcial registrado!');}
+  try{
+    var id=document.getElementById('pagid').value;
+    var i=emps.findIndex(function(e){return e.id===id;});if(i<0)return;
+    var e=emps[i];
+    var tipo=document.getElementById('pagtipo').value;
+    var comp=document.getElementById('pagcomp').value;
+    if(tipo==='total'){
+      emps[i]=Object.assign({},e,pagoFinal(e),{comp:comp||e.comp});
+      toast('✅ Pago TOTAL!');
+    }else if(tipo==='juros'){
+      var jv=jurosDevido(e);
+      var jRec={id:nextEmpId(),cliente:e.cliente,valor:jv,lucro:jv,taxa:0,jrEmbed:0,nparc:1,jtipo:'total',dataEmp:tod(),dataVenc:tod(),parc:'Juros '+e.id,status:'Pago',dataPag:tod(),obs:'Juros de '+e.id,comp:comp,origem:'reneg'};
+      emps.push(jRec);
+      emps[i]=Object.assign({},e,{dataVenc:addDays(e.dataVenc,30),status:'Pendente'},e.jrEmbed!=null?{jrEmbed:0}:{});
+      toast('✅ Juros recebidos! Renovado +30 dias.');
+    }else{
+      var pago=parseFloat(document.getElementById('pagval').value)||0;
+      var novo=aplicarParcial(e,pago);
+      if(novo.status==='Pago'){emps[i]=Object.assign({},novo,{comp:comp||e.comp});toast('✅ Pago total!');}
+      else{emps[i]=Object.assign({},novo,{obs:'Parcial '+R(pago)+'. '+(e.obs||'')});toast('✅ Parcial registrado!');}
+    }
+    saveEmps();closeModal('m-pag');renderDash();renderEmp();renderCli();
+  }catch(err){
+    console.error('Erro em confirmPag:',err);
+    toast('⚠️ Erro ao registrar pagamento: '+(err&&err.message||err));
   }
-  saveEmps();closeModal('m-pag');renderDash();renderEmp();renderCli();
 }
 
 // ── RENEGOCIAÇÃO ──────────────────────────────
@@ -1250,32 +1271,37 @@ function calcReneg(){
   }
 }
 function saveReneg(){
-  var id=document.getElementById('rnid').value;
-  var i=emps.findIndex(function(e){return e.id===id;});if(i<0)return;
-  var e=emps[i];
-  var tipo=document.getElementById('rntipo').value;
-  var dvenc=(document.getElementById('rn-dvenc')||{value:addDays(tod(),30)}).value||addDays(tod(),30);
-  if(tipo==='juros'){
-    var jv=jurosDevido(e);
-    var jRec={id:nextEmpId(),cliente:e.cliente,valor:jv,lucro:jv,taxa:0,nparc:1,jtipo:'total',dataEmp:tod(),dataVenc:tod(),parc:'Juros '+e.id,status:'Pago',dataPag:tod(),obs:'Juros de '+e.id,origem:'reneg'};
-    emps.push(jRec);emps[i]=Object.assign({},e,{dataVenc:dvenc,status:'Renegociado'},e.jrEmbed!=null?{jrEmbed:0}:{});toast('✅ Juros registrados!');
-  }else if(tipo==='parcial'){
-    var vp=parseFloat((document.getElementById('rn-vpago')||{value:'0'}).value)||0;
-    var novo=aplicarParcial(e,vp);
-    if(novo.status==='Pago'){emps[i]=novo;toast('✅ Quitado!');}
-    else{emps[i]=Object.assign({},novo,{dataVenc:dvenc,status:'Renegociado'});toast('✅ Parcial!');}
-  }else if(tipo==='parcelar'){
-    var np=parseInt((document.getElementById('rn-np')||{value:'2'}).value)||2;
-    var tj=parseFloat((document.getElementById('rn-tajur')||{value:'10'}).value)||10;
-    var princ=e.valor||0;var nt=totRec(e)*(1+tj/100);
-    var princPer=princ/np,profitPer=(nt-princ)/np;
-    emps.splice(i,1);
-    for(var p=1;p<=np;p++){emps.push({id:nextEmpId(),cliente:e.cliente,valor:princPer,jrEmbed:profitPer,taxa:0,nparc:1,jtipo:'total',dataEmp:tod(),dataVenc:addDays(dvenc,(p-1)*30),parc:p+'/'+np,status:'Pendente',dataPag:'',obs:'Parcela '+p+'/'+np+' de '+e.id,origem:'reneg'});}
-    toast('✅ Parcelado em '+np+'x!');
-  }else{
-    emps[i]=Object.assign({},e,pagoFinal(e),{dataPag:dvenc||tod()});toast('✅ Quitado!');
+  try{
+    var id=document.getElementById('rnid').value;
+    var i=emps.findIndex(function(e){return e.id===id;});if(i<0)return;
+    var e=emps[i];
+    var tipo=document.getElementById('rntipo').value;
+    var dvenc=(document.getElementById('rn-dvenc')||{value:addDays(tod(),30)}).value||addDays(tod(),30);
+    if(tipo==='juros'){
+      var jv=jurosDevido(e);
+      var jRec={id:nextEmpId(),cliente:e.cliente,valor:jv,lucro:jv,taxa:0,jrEmbed:0,nparc:1,jtipo:'total',dataEmp:tod(),dataVenc:tod(),parc:'Juros '+e.id,status:'Pago',dataPag:tod(),obs:'Juros de '+e.id,origem:'reneg'};
+      emps.push(jRec);emps[i]=Object.assign({},e,{dataVenc:dvenc,status:'Renegociado'},e.jrEmbed!=null?{jrEmbed:0}:{});toast('✅ Juros registrados!');
+    }else if(tipo==='parcial'){
+      var vp=parseFloat((document.getElementById('rn-vpago')||{value:'0'}).value)||0;
+      var novo=aplicarParcial(e,vp);
+      if(novo.status==='Pago'){emps[i]=novo;toast('✅ Quitado!');}
+      else{emps[i]=Object.assign({},novo,{dataVenc:dvenc,status:'Renegociado'});toast('✅ Parcial!');}
+    }else if(tipo==='parcelar'){
+      var np=parseInt((document.getElementById('rn-np')||{value:'2'}).value)||2;
+      var tj=parseFloat((document.getElementById('rn-tajur')||{value:'10'}).value)||10;
+      var princ=e.valor||0;var nt=totRec(e)*(1+tj/100);
+      var princPer=princ/np,profitPer=(nt-princ)/np;
+      emps.splice(i,1);
+      for(var p=1;p<=np;p++){emps.push({id:nextEmpId(),cliente:e.cliente,valor:princPer,jrEmbed:profitPer,taxa:0,nparc:1,jtipo:'total',dataEmp:tod(),dataVenc:addDays(dvenc,(p-1)*30),parc:p+'/'+np,status:'Pendente',dataPag:'',obs:'Parcela '+p+'/'+np+' de '+e.id,origem:'reneg'});}
+      toast('✅ Parcelado em '+np+'x!');
+    }else{
+      emps[i]=Object.assign({},e,pagoFinal(e),{dataPag:dvenc||tod()});toast('✅ Quitado!');
+    }
+    saveEmps();closeModal('m-reneg');renderDash();renderEmp();renderCli();
+  }catch(err){
+    console.error('Erro em saveReneg:',err);
+    toast('⚠️ Erro ao renegociar: '+(err&&err.message||err));
   }
-  saveEmps();closeModal('m-reneg');renderDash();renderEmp();renderCli();
 }
 
 // ── COBRANÇA WHATSAPP ─────────────────────────
