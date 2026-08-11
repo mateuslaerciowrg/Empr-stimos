@@ -578,7 +578,7 @@ input[type=file]{display:none;}
     <div class="mbar"></div>
     <div class="mtitle">🏦 Capital Total</div>
     <div class="mcard" id="caixa-info"></div>
-    <p style="font-size:12px;color:var(--t4);margin-bottom:11px;line-height:1.5">O capital diminui quando você empresta e volta quando o cliente paga. Use este campo só pra corrigir o valor manualmente (ex: reconciliar com o caixa real).</p>
+    <p style="font-size:12px;color:var(--t4);margin-bottom:11px;line-height:1.5">O capital diminui quando você empresta (dentro do disponível) e volta quando o cliente paga. Se você emprestar mais do que tem disponível, o Capital Total cresce pra cobrir a diferença. Use este campo pra corrigir o valor manualmente quando precisar.</p>
     <div class="fg"><label class="fl">Capital Total (R$)</label><input class="fi" id="caixainp" type="number" placeholder="Ex: 10000" inputmode="decimal" style="font-size:22px;text-align:center;font-weight:900" oninput="prevCaixa()"></div>
     <button class="btn bg" onclick="saveCaixa()">Salvar</button>
     <button class="btn bsec" onclick="closeModal('m-caixa')" style="margin-top:7px">Cancelar</button>
@@ -1161,15 +1161,21 @@ function saveEmp(){
     }
     if(id){
       var i=emps.findIndex(function(e){return e.id===id;});if(i>=0)emps[i]=obj;
-    }else if(np>1){
-      var jTotal=juro(obj);
-      var princPer=val/np,profitPer=jTotal/np;
-      var baseVenc=obj.dataVenc||addDays(obj.dataEmp,30);
-      for(var p=1;p<=np;p++){
-        emps.push(Object.assign({},obj,{id:p===1?obj.id:nextEmpId(),valor:princPer,jrEmbed:profitPer,taxa:0,dataVenc:addDays(baseVenc,(p-1)*30),parc:p+'/'+np}));
-      }
     }else{
-      emps.push(obj);
+      var capRuaAntes=emps.filter(function(x){return x.status!=='Pago';}).reduce(function(s,x){return s+(x.valor||0);},0);
+      var disponAntes=Math.max(caixa-capRuaAntes,0);
+      var faltante=Math.max(val-disponAntes,0);
+      if(faltante>0){caixa+=faltante;DB.sv('caixa',caixa);}
+      if(np>1){
+        var jTotal=juro(obj);
+        var princPer=val/np,profitPer=jTotal/np;
+        var baseVenc=obj.dataVenc||addDays(obj.dataEmp,30);
+        for(var p=1;p<=np;p++){
+          emps.push(Object.assign({},obj,{id:p===1?obj.id:nextEmpId(),valor:princPer,jrEmbed:profitPer,taxa:0,dataVenc:addDays(baseVenc,(p-1)*30),parc:p+'/'+np}));
+        }
+      }else{
+        emps.push(obj);
+      }
     }
     saveEmps();closeModal('m-emp');renderDash();renderEmp();renderCli();
     toast(id?'✅ Atualizado!':(np>1?'✅ Parcelado em '+np+'x!':'✅ '+obj.id+' salvo!'));
