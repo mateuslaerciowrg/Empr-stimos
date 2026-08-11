@@ -668,15 +668,19 @@ function dLate(venc,status){
   var d=Math.floor((t-v)/86400000);return d>0?d:0;
 }
 function juro(e){
-  var np=e.nparc||1,tipo=e.jtipo||'total',v=e.valor||0,t=e.taxa||40;
+  var np=e.nparc||1,tipo=e.jtipo||'total',v=e.valor||0,t=e.taxa!=null?e.taxa:40;
   if(tipo==='parcela')return v*(t/100)*np;
   return v*t/100;
 }
 function jurosDevido(e){return e.jrEmbed!=null?e.jrEmbed:juro(e);}
-function taxaEfetiva(e){return e.jrEmbed!=null&&e.valor?Math.round(e.jrEmbed/e.valor*100):(e.taxa||40);}
+function taxaEfetiva(e){return e.jrEmbed!=null&&e.valor?Math.round(e.jrEmbed/e.valor*100):(e.taxa!=null?e.taxa:40);}
 function multa(e){if(e.status==='Pago')return e.multaPaga||0;var d=dLate(e.dataVenc,e.status);return d>0?d*40:0;}
 function totRec(e){return (e.valor||0)+jurosDevido(e)+multa(e);}
-function lucroDe(e){return e.lucro!=null?e.lucro:jurosDevido(e)+multa(e);}
+function lucroDe(e){
+  if(e.lucro!=null)return e.lucro;
+  if(e.jrEmbed==null&&(e.parc||'').indexOf('Juros ')===0)return e.valor||0;
+  return jurosDevido(e)+multa(e);
+}
 function pagoFinal(e){return {status:'Pago',dataPag:tod(),multaPaga:multa(e),lucro:(e.lucroAcum||0)+jurosDevido(e)+multa(e)};}
 function aplicarParcial(e,pago){
   var jr=jurosDevido(e),mt=multa(e),princ=e.valor||0;
